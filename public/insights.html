@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insights · Damiland CBT</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+  :root { --brand:#01309F; --brand-dark:#002580; --tint:#E8EEFC; --ink:#0B1230; --muted:#4A5470; --line:#CBD3E8; --grid:#E3E8F4; --bg:#F4F6FC; --ok:#0B5C38; --bad:#8C1D18 }
+  * { box-sizing:border-box }
+  body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink); padding:24px 16px }
+  .wrap { max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:24px }
+  .top { display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .top img { width:48px; height:48px; object-fit:contain }
+  .top h1 { margin:0; font-size:24px; line-height:32px; font-weight:600; flex:1 }
+  .ghost { height:44px; padding:0 16px; border:2px solid var(--brand); border-radius:12px; background:#fff; color:var(--brand); font:600 16px 'Poppins',sans-serif; text-decoration:none; display:inline-flex; align-items:center }
+  a:focus-visible, select:focus-visible { outline:3px solid var(--brand); outline-offset:2px }
+  select { height:44px; padding:0 12px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; background:#fff; color:var(--ink) }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; display:flex; flex-direction:column; gap:16px; min-width:0 }
+  h2 { margin:0; font-size:20px; line-height:28px; font-weight:600 }
+  p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
+  .small { font-size:14px; line-height:20px; color:var(--muted) }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px }
+  .tile { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px 24px; display:flex; flex-direction:column; gap:4px }
+  .tile b { font-size:32px; line-height:40px; font-weight:700; color:var(--brand) }
+  .tile span { font-size:14px; line-height:20px; color:var(--muted); font-weight:500 }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:24px }
+  @media (max-width:880px){ .two { grid-template-columns:1fr } }
+
+  /* horizontal bars */
+  .hb { display:flex; flex-direction:column; gap:12px }
+  .hb .r { display:grid; grid-template-columns:120px 1fr 56px; gap:12px; align-items:center; font-size:14px; line-height:20px }
+  .hb .track { height:24px; background:var(--grid); border-radius:4px; position:relative }
+  .hb .fill { position:absolute; inset:0 auto 0 0; background:var(--brand); border-radius:0 4px 4px 0 }
+  .hb .v { text-align:right; font-weight:600 }
+  .hb .r:hover .fill, .col:hover .cf { background:var(--brand-dark) }
+  /* histogram */
+  .hist { display:flex; align-items:flex-end; gap:8px; height:200px; border-bottom:2px solid var(--line); padding-top:8px }
+  .col { flex:1; height:100%; display:flex; align-items:flex-end; position:relative }
+  .cf { width:100%; background:var(--brand); border-radius:4px 4px 0 0; min-height:0 }
+  .xl { display:flex; gap:8px }
+  .xl span { flex:1; text-align:center; font-size:12px; line-height:16px; color:var(--muted) }
+  .tip { position:fixed; z-index:20; pointer-events:none; background:var(--ink); color:#fff; padding:8px 12px; border-radius:8px; font-size:14px; line-height:20px; max-width:240px }
+  [hidden] { display:none !important }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" id="gate" hidden><p>Please <a href="/">log in as admin</a> first.</p></div>
+  <div id="main" style="display:flex;flex-direction:column;gap:24px" hidden>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <select id="cls" aria-label="Class"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
+      <span class="small">Based on every submitted exam, whether or not results are released.</span>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="two">
+      <div class="card"><h2>Average score by subject</h2><p class="small">Percentage of questions answered correctly.</p><div class="hb" id="by-subject"></div></div>
+      <div class="card"><h2>Average score by class</h2><p class="small">Total score as a percentage.</p><div class="hb" id="by-class"></div></div>
+    </div>
+    <div class="card"><h2>How scores are spread</h2><p class="small">Number of students in each score band (total percentage).</p><div class="hist" id="hist"></div><div class="xl" id="xl"></div></div>
+    <div class="two">
+      <div class="card"><h2>Top 5 students</h2><div class="hb" id="top"></div></div>
+      <div class="card"><h2>Students who need support</h2><p class="small">Lowest 5 scores.</p><div class="hb" id="low"></div></div>
+    </div>
+  </div>
+</div>
+<div class="tip" id="tip" hidden></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 : 0;
+let results = [], registered = 0;
+
+async function load() {
+  const [r, s] = await Promise.all([fetch('/api/admin/results'), fetch('/api/admin/students')]);
+  if (r.status === 401) return $('gate').hidden = false;
+  results = (await r.json()).results; registered = (await s.json()).students;
+  $('main').hidden = false; draw();
+}
+function bars(el, rows) {
+  el.innerHTML = rows.length ? rows.map((x) => `<div class="r" data-tip="${esc(x.tip)}"><span>${esc(x.label)}</span><div class="track"><div class="fill" style="width:${Math.min(100, x.pct)}%"></div></div><span class="v">${x.pct}%</span></div>`).join('') : '<p class="small">No submitted exams yet.</p>';
+}
+function draw() {
+  const cls = $('cls').value;
+  const list = results.filter((x) => !cls || x.className === cls);
+  const reg = registered.filter((x) => !cls || x.className === cls).length;
+  const totals = list.map((x) => pct(x.total, x.outOf));
+  const avg = totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length * 10) / 10 : 0;
+  const pass = totals.filter((t) => t >= 50).length;
+  const tile = (v, l) => `<div class="tile"><b>${v}</b><span>${l}</span></div>`;
+  $('tiles').innerHTML = tile(`${list.length} / ${reg}`, 'Students who have submitted') + tile(list.length ? avg + '%' : '–', 'Average score') +
+    tile(list.length ? Math.max(...totals) + '%' : '–', 'Highest score') + tile(list.length ? pct(pass, list.length) + '%' : '–', 'Scored 50% or more');
+
+  // by subject
+  const sub = {};
+  list.forEach((x) => x.scores.forEach((s) => { (sub[s.subject] ??= { a: 0, b: 0, n: 0 }); sub[s.subject].a += s.score; sub[s.subject].b += s.total; sub[s.subject].n++; }));
+  bars($('by-subject'), Object.entries(sub).map(([k, v]) => ({ label: k, pct: pct(v.a, v.b), tip: `${k}: ${pct(v.a, v.b)}% average across ${v.n} student${v.n > 1 ? 's' : ''}` })).sort((a, b) => b.pct - a.pct));
+
+  // by class (always all three so they can be compared)
+  const byc = {};
+  results.forEach((x) => { (byc[x.className] ??= { a: 0, b: 0, n: 0 }); byc[x.className].a += x.total; byc[x.className].b += x.outOf; byc[x.className].n++; });
+  bars($('by-class'), Object.entries(byc).map(([k, v]) => ({ label: k, pct: pct(v.a, v.b), tip: `${k}: ${pct(v.a, v.b)}% average, ${v.n} student${v.n > 1 ? 's' : ''}` })));
+
+  // histogram, 10 bands
+  const bands = Array(10).fill(0);
+  totals.forEach((t) => bands[Math.min(9, Math.floor(t / 10))]++);
+  const mx = Math.max(1, ...bands);
+  $('hist').innerHTML = bands.map((n, i) => `<div class="col" data-tip="${i * 10}–${i === 9 ? 100 : i * 10 + 9}%: ${n} student${n === 1 ? '' : 's'}"><div class="cf" style="height:${n / mx * 100}%"></div></div>`).join('');
+  $('xl').innerHTML = bands.map((_, i) => `<span>${i * 10}${i === 9 ? '+' : ''}</span>`).join('');
+
+  const ranked = list.map((x) => ({ label: x.fullName, pct: pct(x.total, x.outOf), tip: `${x.fullName} (${x.code}), ${x.className}: ${x.total}/${x.outOf}` })).sort((a, b) => b.pct - a.pct);
+  bars($('top'), ranked.slice(0, 5));
+  bars($('low'), ranked.length > 5 ? ranked.slice(-5).reverse() : []);
+  if (ranked.length <= 5) $('low').innerHTML = '<p class="small">Shown once more than 5 students have submitted.</p>';
+}
+$('cls').onchange = draw;
+
+// hover tooltip for every bar and column
+const tip = $('tip');
+document.addEventListener('mousemove', (e) => {
+  const t = e.target.closest('[data-tip]');
+  if (!t) return tip.hidden = true;
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - 250) + 'px'; tip.style.top = e.clientY + 16 + 'px';
+});
+load();
+</script>
+<script src="/shell.js" data-page="overview" data-title="Overview"></script>
+</body>
+</html>

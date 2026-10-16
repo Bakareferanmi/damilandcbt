@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Results · Damiland CBT</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+  :root { --brand:#01309F; --brand-dark:#002580; --tint:#E8EEFC; --ink:#0B1230; --muted:#4A5470; --line:#CBD3E8; --bg:#F4F6FC; --ok:#0B5C38; --bad:#8C1D18 }
+  * { box-sizing:border-box }
+  body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink); padding:24px 16px }
+  .wrap { max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:24px }
+  .top { display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .top img { width:48px; height:48px; object-fit:contain }
+  .top h1 { margin:0; font-size:24px; line-height:32px; font-weight:600; flex:1 }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; display:flex; flex-direction:column; gap:16px }
+  p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
+  .ghost { height:44px; padding:0 16px; border:2px solid var(--brand); border-radius:12px; background:#fff; color:var(--brand); font:600 16px 'Poppins',sans-serif; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center }
+  .primary { height:44px; padding:0 16px; border:0; border-radius:12px; background:var(--brand); color:#fff; font:600 16px 'Poppins',sans-serif; cursor:pointer }
+  .primary:hover { background:var(--brand-dark) }
+  button:focus-visible, a:focus-visible, select:focus-visible { outline:3px solid var(--brand); outline-offset:2px }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+  select { height:44px; padding:0 12px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; background:#fff; color:var(--ink) }
+  .scroll { overflow-x:auto }
+  table { width:100%; border-collapse:collapse; font-size:16px; line-height:24px }
+  th, td { text-align:left; padding:12px; border-bottom:1px solid var(--line); white-space:nowrap }
+  th { font-size:14px; line-height:20px; color:var(--muted); font-weight:600 }
+  .pill { display:inline-block; padding:2px 12px; border-radius:12px; font-size:14px; line-height:20px; font-weight:600 }
+  .pill.on { background:#DDF3E8; color:var(--ok) }
+  .pill.off { background:#EEF0F6; color:var(--muted) }
+  [hidden] { display:none !important }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="gate" class="card" hidden><p>Please <a href="/">log in as admin</a> first.</p></div>
+  <div class="card" id="main" hidden>
+    <p>Students cannot see their scores until you release them. Release one student at a time, or everyone at once.</p>
+    <div class="row">
+      <select id="cls"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
+      <button class="primary" id="rel-all">Release all</button>
+      <button class="ghost" id="hide-all">Hide all</button>
+      <button class="ghost" id="dl">Download results (CSV)</button>
+      <span id="count" style="margin-left:auto;color:var(--muted)"></span>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Code</th><th>Name</th><th>Class</th><th>Group</th><th>Scores</th><th>Total</th><th>Status</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+let all = [];
+async function api(path, body) {
+  const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+  return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
+}
+async function load() {
+  const r = await api('/api/admin/results');
+  if (r.status === 401) return $('gate').hidden = false;
+  all = r.data.results; $('main').hidden = false; draw();
+}
+function draw() {
+  const cls = $('cls').value;
+  const list = all.filter((x) => !cls || x.className === cls);
+  $('count').textContent = list.length + ' submitted';
+  $('rows').innerHTML = list.length ? list.map((x) => `<tr>
+    <td>${esc(x.code)}</td><td>${esc(x.fullName)}</td><td>${esc(x.className)}</td><td>${x.groupNo}</td>
+    <td>${x.scores.map((s) => esc(s.subject) + ' ' + s.score + '/' + s.total).join(' · ')}</td>
+    <td><b>${x.total}/${x.outOf}</b></td>
+    <td><span class="pill ${x.released ? 'on' : 'off'}">${x.released ? 'Released' : 'Hidden'}</span></td>
+    <td><button class="ghost" data-code="${esc(x.code)}" data-to="${!x.released}">${x.released ? 'Hide' : 'Release'}</button></td></tr>`).join('')
+    : '<tr><td colspan="8">No one has submitted yet.</td></tr>';
+  document.querySelectorAll('[data-code]').forEach((b) => b.onclick = async () => { await api('/api/admin/results/release', { code: b.dataset.code, released: b.dataset.to === 'true' }); load(); });
+}
+$('cls').onchange = draw;
+// Download what is on screen (respects the class filter) as a CSV that opens in Excel / Google Sheets.
+$('dl').onclick = () => {
+  const cls = $('cls').value;
+  const list = all.filter((x) => !cls || x.className === cls);
+  if (!list.length) return alert('No submitted exams to download yet.');
+  const subjects = [...new Set(list.flatMap((x) => x.scores.map((s) => s.subject)))];
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const head = ['Student code', 'Name', 'Class', 'Group', ...subjects, 'Total', 'Out of', 'Percent', 'Released'];
+  const rows = list.map((x) => [x.code, x.fullName, x.className, 'Group ' + x.groupNo,
+    ...subjects.map((sb) => { const f = x.scores.find((s) => s.subject === sb); return f ? f.score : ''; }),
+    x.total, x.outOf, x.outOf ? Math.round(x.total / x.outOf * 1000) / 10 + '%' : '', x.released ? 'Yes' : 'No']);
+  const csv = '\uFEFF' + [head, ...rows].map((r) => r.map(q).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'damiland-cbt-results' + (cls ? '-' + cls.replace(/\s+/g, '-').toLowerCase() : '') + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$('rel-all').onclick = async () => { if (confirm('Release results to every student who has submitted?')) { await api('/api/admin/results/release', { all: true, released: true }); load(); } };
+$('hide-all').onclick = async () => { await api('/api/admin/results/release', { all: true, released: false }); load(); };
+load();
+</script>
+<script src="/shell.js" data-page="results" data-title="Results"></script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student login · Damiland CBT</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+  body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink) }
+  .split { min-height:100vh; display:grid; grid-template-columns:1fr 1fr }
+  .hero { background:var(--brand); color:#fff; padding:48px; display:flex; flex-direction:column; justify-content:space-between; gap:32px }
+  .chip { width:72px; height:72px; background:#fff; border-radius:16px; display:flex; align-items:center; justify-content:center }
+  .chip img { width:48px; height:48px; object-fit:contain }
+  .hero h2 { margin:0; font-size:36px; line-height:44px; font-weight:700 }
+  .hero p { margin:16px 0 0; font-size:18px; line-height:28px; color:#DCE5FB; max-width:420px }
+  .hero ul { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:12px; font-size:16px; line-height:24px }
+  .hero li { display:flex; gap:12px; align-items:center }
+  .hero li .ico { background:rgba(255,255,255,.16); border-radius:8px; padding:6px; width:32px; height:32px; flex-basis:32px }
+  .panel { display:flex; align-items:center; justify-content:center; padding:32px 16px }
+  .box { width:100%; max-width:416px; display:flex; flex-direction:column; gap:24px }
+  .mobile-brand { display:none; align-items:center; gap:12px }
+  .mobile-brand img { width:48px; height:48px; object-fit:contain }
+  .mobile-brand b { font-size:24px; line-height:32px; color:var(--brand) }
+  h1 { margin:0; font-size:28px; line-height:36px; font-weight:700 }
+  p.sub { margin:4px 0 0; font-size:16px; line-height:24px; color:var(--muted) }
+  .seg { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; background:#E4E8F4; border-radius:12px }
+  .seg button { height:44px; border:0; border-radius:8px; background:transparent; color:var(--muted); font:600 16px 'Poppins',sans-serif; cursor:pointer }
+  .seg button[aria-pressed="true"] { background:#fff; color:var(--brand); box-shadow:0 1px 4px rgba(11,18,48,.12) }
+  form { display:flex; flex-direction:column; gap:16px }
+  label { font-size:16px; line-height:24px; font-weight:500; display:flex; flex-direction:column; gap:8px }
+  .field { position:relative; display:flex; align-items:center }
+  .field > .ico { position:absolute; left:16px; color:var(--muted); pointer-events:none }
+  .field input { height:56px; width:100%; padding:0 16px 0 52px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; color:var(--ink); background:#fff }
+  .field input::placeholder { color:#5B6683 }
+  .field .eye { position:absolute; right:4px; width:48px; height:48px; border:0; background:transparent; color:var(--muted); cursor:pointer; border-radius:8px; display:flex; align-items:center; justify-content:center }
+  .field.has-eye input { padding-right:56px }
+  .submit { height:56px; font-size:16px }
+  .foot { text-align:center; font-size:14px; line-height:20px; color:var(--muted) }
+  @media (max-width:880px) {
+    .split { grid-template-columns:1fr }
+    .hero { display:none }
+    .mobile-brand { display:flex }
+    .panel { align-items:flex-start; padding-top:32px }
+  }
+</style>
+</head>
+<body>
+<div class="split">
+  <section class="hero" aria-hidden="true">
+    <div class="chip"><img src="/logo.png" alt=""></div>
+    <div>
+      <h2>Computer-Based Test portal</h2>
+      <p>Sit your exam with confidence. Clear screens, a running timer and answers saved as you go.</p>
+    </div>
+    <ul>
+      <li><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Timed exam, kept by the server</li>
+      <li><svg class="ico" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>Every answer saved automatically</li>
+      <li><svg class="ico" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>Results reviewed by your school</li>
+    </ul>
+  </section>
+
+  <main class="panel">
+    <div class="box">
+      <div class="mobile-brand"><img src="/logo.png" alt=""><b>Damiland CBT</b></div>
+      <div>
+        <h1>Welcome back</h1>
+        <p class="sub">Log in with your student code and password.</p>
+      </div>
+
+      <form id="student-form">
+        <label>Student code
+          <span class="field">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.5-1.5 1.7-2 3-2s2.5.5 3 2M15 10h3M15 14h3"/></svg>
+            <input name="code" placeholder="DAMILANDCBT001" autocomplete="username" autocapitalize="characters" required>
+          </span>
+        </label>
+        <label>Password
+          <span class="field has-eye">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
+            <button type="button" class="eye" aria-label="Show password"><svg class="ico" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </span>
+        </label>
+        <button class="btn submit" type="submit">Log in</button>
+      </form>
+
+      <div id="login-msg" class="msg bad" role="alert" hidden></div>
+      <p class="foot">Lost your password? Ask your school admin to reset it.<br><a href="/admin" style="color:var(--brand);font-weight:600">School staff? Admin sign in</a></p>
+    </div>
+  </main>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  async function api(path, body) {
+    const res = await fetch(path, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Something went wrong. Try again.');
+    return data;
+  }
+  const msg = (t) => { $('login-msg').textContent = t; $('login-msg').hidden = !t; };
+  const go = (me) => { location.href = me.role === 'admin' ? '/insights' : '/exam'; };
+
+  document.querySelectorAll('.eye').forEach((b) => b.onclick = () => {
+    const i = b.parentElement.querySelector('input');
+    const show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  });
+
+  async function submit(e, path, body, btn) {
+    e.preventDefault(); msg('');
+    const b = e.target.querySelector('.submit'); b.disabled = true;
+    try { await api(path, body); go(await api('/api/me')); }
+    catch (err) { msg(err.message); b.disabled = false; }
+  }
+  $('student-form').onsubmit = (e) => { const f = new FormData(e.target); submit(e, '/api/student/login', { code: f.get('code'), password: f.get('password') }); };
+
+  api('/api/me').then(go).catch(() => {});
+</script>
+</body>
+</html>

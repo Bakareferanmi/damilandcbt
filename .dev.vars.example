@@ -1,0 +1,3 @@
+# Copy this file to .dev.vars (same folder) and change the value.
+# .dev.vars is only used on your computer and is never uploaded or committed.
+JWT_SECRET=change-me-to-a-long-random-string

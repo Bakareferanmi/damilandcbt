@@ -1,0 +1,71 @@
+/* Damiland CBT shared styles. Brand blue from the logo, Poppins, 4-point spacing grid. */
+:root { --brand:#01309F; --brand-dark:#002580; --tint:#E8EEFC; --ink:#0B1230; --muted:#4A5470; --line:#CBD3E8; --grid:#E3E8F4; --bg:#F4F6FC; --ok:#0B5C38; --bad:#8C1D18 }
+* { box-sizing:border-box }
+html { -webkit-text-size-adjust:100% }
+[hidden] { display:none !important }
+.ico { width:20px; height:20px; flex:0 0 20px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round }
+
+/* ---------- admin shell (sidebar + page) ---------- */
+body.shell { padding:0; display:block; min-height:100vh }
+.app { display:grid; grid-template-columns:256px 1fr; min-height:100vh }
+.side { background:#fff; border-right:1px solid var(--line); padding:24px 16px; display:flex; flex-direction:column; gap:24px; position:sticky; top:0; height:100vh }
+.brand { display:flex; align-items:center; gap:12px; padding:0 8px }
+.brand img { width:40px; height:40px; object-fit:contain }
+.brand b { font-size:18px; line-height:24px; font-weight:700; color:var(--brand) }
+.brand span { display:block; font-size:12px; line-height:16px; color:var(--muted); font-weight:500 }
+.nav { display:flex; flex-direction:column; gap:4px; flex:1 }
+.nav a { display:flex; align-items:center; gap:12px; min-height:48px; padding:0 16px; border-radius:12px; color:var(--ink); text-decoration:none; font:500 16px 'Poppins',sans-serif }
+.nav a:hover { background:var(--bg) }
+.nav a[aria-current="page"] { background:var(--tint); color:var(--brand); font-weight:600 }
+.side .who { padding:0 8px; font-size:14px; line-height:20px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.logout { display:flex; align-items:center; gap:12px; min-height:48px; padding:0 16px; border:2px solid var(--line); border-radius:12px; background:#fff; color:var(--ink); font:600 16px 'Poppins',sans-serif; cursor:pointer }
+.logout:hover { border-color:var(--brand); color:var(--brand) }
+.pagehead { padding:24px 24px 0; max-width:1168px; margin:0 auto; width:100%; display:flex; align-items:center; gap:12px }
+.pagehead h1 { margin:0; font-size:24px; line-height:32px; font-weight:600; flex:1 }
+.menu { display:none; width:44px; height:44px; border:2px solid var(--line); border-radius:12px; background:#fff; color:var(--ink); cursor:pointer; align-items:center; justify-content:center }
+.content { padding:24px }
+.app .wrap { max-width:1120px; margin:0 auto }
+.scrim { display:none }
+@media (max-width:880px) {
+  .app { grid-template-columns:1fr }
+  .side { position:fixed; inset:0 auto 0 0; width:280px; z-index:30; transform:translateX(-100%); transition:transform .2s; box-shadow:0 8px 32px rgba(11,18,48,.25) }
+  .app.open .side { transform:none }
+  .app.open .scrim { display:block; position:fixed; inset:0; background:rgba(11,18,48,.5); z-index:20 }
+  .menu { display:inline-flex }
+  .pagehead, .content { padding-left:16px; padding-right:16px }
+}
+
+/* ---------- shared pieces ---------- */
+.card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; display:flex; flex-direction:column; gap:16px; min-width:0 }
+.btn, .primary { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:48px; padding:0 24px; border:0; border-radius:12px; background:var(--brand); color:#fff; font:600 16px 'Poppins',sans-serif; cursor:pointer; text-decoration:none }
+.btn:hover, .primary:hover { background:var(--brand-dark) }
+.btn:disabled, .primary:disabled { opacity:.5; cursor:not-allowed }
+.ghost { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:44px; padding:0 16px; border:2px solid var(--brand); border-radius:12px; background:#fff; color:var(--brand); font:600 16px 'Poppins',sans-serif; cursor:pointer; text-decoration:none }
+.ghost:hover { background:var(--tint) }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:3px solid var(--brand); outline-offset:2px }
+.msg { padding:12px 16px; border-radius:12px; font-size:16px; line-height:24px; font-weight:500 }
+.msg.bad { background:#FDECEA; color:var(--bad) }
+.msg.ok { background:#DDF3E8; color:var(--ok) }
+.pill { display:inline-block; padding:2px 12px; border-radius:12px; font-size:14px; line-height:20px; font-weight:600; background:#EEF0F6; color:var(--muted) }
+.pill.on { background:#DDF3E8; color:var(--ok) }
+.pill.blue { background:var(--tint); color:var(--brand) }
+
+/* ---------- print slip (login details for one student) ---------- */
+.slip { border:2px dashed var(--line); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:4px }
+.slip .k { font-size:14px; line-height:20px; color:var(--muted) }
+.slip .v { font-size:20px; line-height:28px; font-weight:700; letter-spacing:.04em; color:var(--brand) }
+@media print {
+  body * { visibility:hidden }
+  .slip, .slip * { visibility:visible }
+  .slip { position:absolute; left:0; top:0; width:100%; border:2px solid #000 }
+}
+
+/* session switcher + past-session notice */
+.sessbox { display:flex; flex-direction:column; gap:4px; padding:0 8px; font-size:12px; line-height:16px; font-weight:600; color:var(--muted) }
+.sessbox select { height:44px; padding:0 12px; border:2px solid var(--line); border-radius:12px; font:500 16px 'Poppins',sans-serif; background:#fff; color:var(--ink) }
+.pastbar { margin:16px 24px 0; padding:12px 16px; border-radius:12px; background:#FFF3D6; color:#6B4200; font-size:16px; line-height:24px; font-weight:500; max-width:1120px }
+@media (min-width:1200px) { .pastbar { margin-left:auto; margin-right:auto; width:calc(100% - 48px) } }
+
+/* past sessions are read-only: hide the buttons that would change anything */
+body.past #reg, body.past [data-edit], body.past [data-reset],
+body.past #form-card, body.past #import-card, body.past #list [data-del] { display:none !important }

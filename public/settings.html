@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings · Damiland CBT</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+  body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink) }
+  .wrap { display:flex; flex-direction:column; gap:24px; max-width:720px !important }
+  h2 { margin:0; font-size:20px; line-height:28px; font-weight:600 }
+  p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
+  label { font-size:16px; line-height:24px; font-weight:500; display:flex; flex-direction:column; gap:8px }
+  input { height:48px; padding:0 16px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; color:var(--ink); background:#fff; width:100% }
+  form { display:flex; flex-direction:column; gap:16px }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+  .unit { display:flex; gap:12px; align-items:center }
+  .unit input { max-width:140px }
+  .list { display:flex; flex-direction:column }
+  .item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap }
+  .item:last-child { border-bottom:0 }
+  .item span.mail { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; font-weight:500 }
+  .item .ghost { height:36px; padding:0 12px; font-size:14px; color:var(--bad); border-color:var(--bad) }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h2>Academic session</h2>
+    <p>Every session has its own students, questions and results, and student numbers start again at 001. Only students of the <b>current</b> session can log in. Old sessions stay saved and can be viewed (read-only) from the Session menu in the sidebar.</p>
+    <form id="ren">
+      <label>Current session name <span class="unit"><input name="name" maxlength="20" required style="max-width:200px"> <button class="ghost" type="submit">Rename</button></span></label>
+      <div id="ren-msg" class="msg" hidden role="status"></div>
+    </form>
+    <div class="list" id="sessions"></div>
+    <form id="newsess" style="margin-top:8px">
+      <h2 style="font-size:16px;line-height:24px">Start a new session</h2>
+      <label>New session name <input name="name" placeholder="e.g. 2027/2028" maxlength="20" autocomplete="off" required style="max-width:240px"></label>
+      <label style="flex-direction:row;align-items:center;gap:12px;font-weight:400"><input type="checkbox" name="copy" style="width:20px;height:20px"> Copy this session’s questions into the new one as a starting point</label>
+      <p style="font-size:14px;line-height:20px">The current session’s students will no longer be able to log in, so do this only when the new school year begins. Nothing is deleted.</p>
+      <div class="row"><button class="btn" type="submit">Start new session</button></div>
+      <div id="new-msg" class="msg" hidden role="status"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Exam length</h2>
+    <p>How long students have for the whole exam (all four subjects). A change applies to students who start after you save. Anyone already sitting keeps their time.</p>
+    <form id="len">
+      <label>Minutes
+        <span class="unit"><input name="m" type="number" min="10" max="360" step="1" required> <span>minutes (10 to 360)</span></span>
+      </label>
+      <div class="row"><button class="btn" type="submit">Save</button></div>
+      <div id="len-msg" class="msg" hidden role="status"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Administrators</h2>
+    <p>People who can sign in to this admin area.</p>
+    <div class="list" id="admins"></div>
+    <form id="add" style="margin-top:8px">
+      <h2 style="font-size:16px;line-height:24px">Add an administrator</h2>
+      <label>Email address <input name="email" type="email" autocomplete="off" required></label>
+      <label>Password <input name="password" type="text" minlength="8" autocomplete="off" placeholder="At least 8 characters" required></label>
+      <p style="font-size:14px;line-height:20px">Tell them the password in person. They can change it under “Change my password”.</p>
+      <div class="row"><button class="btn" type="submit">Add administrator</button></div>
+      <div id="add-msg" class="msg" hidden role="status"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Change my password</h2>
+    <form id="pw">
+      <label>Current password <input name="cur" type="password" autocomplete="current-password" required></label>
+      <label>New password <input name="new" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required></label>
+      <div class="row"><button class="btn" type="submit">Change password</button></div>
+      <div id="pw-msg" class="msg" hidden role="status"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+async function api(path, body, method) {
+  const r = await fetch(path, { method: method || (body ? 'POST' : 'GET'), headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+  return { ok: r.ok, data: await r.json().catch(() => ({})) };
+}
+function say(id, r, okText) { const el = $(id); el.textContent = r.ok ? okText : (r.data.error || 'Something went wrong.'); el.className = 'msg ' + (r.ok ? 'ok' : 'bad'); el.hidden = false; }
+
+async function loadLen() { const r = await api('/api/admin/settings'); if (r.ok) $('len').m.value = r.data.examMinutes; }
+$('len').onsubmit = async (e) => { e.preventDefault(); say('len-msg', await api('/api/admin/settings', { examMinutes: Number($('len').m.value) }, 'PUT'), 'Saved. New exams will use this length.'); };
+
+async function loadAdmins() {
+  const r = await api('/api/admin/admins'); if (!r.ok) return;
+  $('admins').innerHTML = r.data.admins.map((a) => `<div class="item"><span class="mail">${esc(a.email)}</span>${a.you ? '<span class="pill blue">You</span>' : `<button class="ghost" data-del="${a.id}" data-mail="${esc(a.email)}">Remove</button>`}</div>`).join('');
+  document.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
+    if (!confirm('Remove ' + b.dataset.mail + '? They will no longer be able to sign in.')) return;
+    const d = await api('/api/admin/admins/' + b.dataset.del, null, 'DELETE');
+    if (!d.ok) return alert(d.data.error || 'Could not remove.');
+    loadAdmins();
+  });
+}
+$('add').onsubmit = async (e) => {
+  e.preventDefault(); const f = e.target;
+  const r = await api('/api/admin/admins', { email: f.email.value, password: f.password.value });
+  say('add-msg', r, 'Administrator added. They can sign in at the admin page now.');
+  if (r.ok) { f.reset(); loadAdmins(); }
+};
+$('pw').onsubmit = async (e) => {
+  e.preventDefault(); const f = e.target;
+  const r = await api('/api/admin/password', { currentPassword: f.cur.value, newPassword: f.new.value }, 'PUT');
+  say('pw-msg', r, 'Password changed.'); if (r.ok) f.reset();
+};
+let curSession = null;
+async function loadSessions() {
+  const r = await api('/api/admin/sessions'); if (!r.ok) return;
+  curSession = r.data.sessions.find((x) => x.current);
+  $('ren').name.value = curSession.name;
+  $('sessions').innerHTML = r.data.sessions.map((x) => `<div class="item"><span class="mail">${esc(x.name)}</span><span class="small" style="font-size:14px;color:var(--muted)">${x.students} students · ${x.questions} questions</span>${x.current ? '<span class="pill blue">Current</span>' : ''}</div>`).join('');
+}
+$('ren').onsubmit = async (e) => { e.preventDefault(); const r = await api('/api/admin/sessions/' + curSession.id, { name: e.target.name.value }, 'PUT'); say('ren-msg', r, 'Renamed.'); if (r.ok) { loadSessions(); } };
+$('newsess').onsubmit = async (e) => {
+  e.preventDefault(); const f = e.target;
+  if (!confirm('Start session ' + f.name.value + '? Students of ' + curSession.name + ' will no longer be able to log in.')) return;
+  const r = await api('/api/admin/sessions', { name: f.name.value, copyQuestions: f.copy.checked });
+  say('new-msg', r, 'New session started. It is now the current session.');
+  if (r.ok) setTimeout(() => location.reload(), 900);
+};
+loadSessions(); loadLen(); loadAdmins();
+</script>
+<script src="/shell.js" data-page="settings" data-title="Settings"></script>
+</body>
+</html>

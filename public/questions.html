@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Questions · Damiland CBT</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+  :root { --brand:#01309F; --brand-dark:#002580; --tint:#E8EEFC; --ink:#0B1230; --muted:#4A5470; --line:#CBD3E8; --bg:#F4F6FC; --ok:#0B5C38; --bad:#8C1D18; }
+  * { box-sizing:border-box }
+  body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink); padding:24px 16px }
+  .wrap { max-width:960px; margin:0 auto; display:flex; flex-direction:column; gap:24px }
+  .top { display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .top img { width:48px; height:48px; object-fit:contain }
+  .top h1 { margin:0; font-size:24px; line-height:32px; font-weight:600; flex:1 }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; display:flex; flex-direction:column; gap:16px }
+  h2 { margin:0; font-size:20px; line-height:28px; font-weight:600 }
+  p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
+  .subjects { display:grid; grid-template-columns:repeat(auto-fill,minmax(176px,1fr)); gap:12px }
+  .subj { text-align:left; padding:12px 16px; border:2px solid var(--line); border-radius:12px; background:#fff; font:500 16px 'Poppins',sans-serif; color:var(--ink); cursor:pointer; display:flex; flex-direction:column; gap:8px; min-height:68px }
+  .subj[aria-pressed="true"] { border-color:var(--brand); background:var(--tint) }
+  .bar { height:8px; border-radius:4px; background:var(--line); overflow:hidden }
+  .bar i { display:block; height:100%; background:var(--brand) }
+  .bar.full i { background:var(--ok) }
+  .small { font-size:14px; line-height:20px; color:var(--muted) }
+  label { font-size:16px; line-height:24px; font-weight:500; display:flex; flex-direction:column; gap:8px }
+  input, textarea, select { padding:0 16px; height:48px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; color:var(--ink); background:#fff; width:100% }
+  textarea { height:96px; padding:12px 16px; resize:vertical }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px }
+  @media (max-width:640px){ .grid2 { grid-template-columns:1fr } }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+  .primary { height:48px; padding:0 24px; border:0; border-radius:12px; background:var(--brand); color:#fff; font:600 16px 'Poppins',sans-serif; cursor:pointer }
+  .primary:hover { background:var(--brand-dark) }
+  .primary:disabled { opacity:.5; cursor:not-allowed }
+  .ghost { height:44px; padding:0 16px; border:2px solid var(--brand); border-radius:12px; background:#fff; color:var(--brand); font:600 16px 'Poppins',sans-serif; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center }
+  .danger { color:var(--bad); border-color:var(--bad) }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline:3px solid var(--brand); outline-offset:2px }
+  .msg { padding:12px 16px; border-radius:12px; font-size:16px; line-height:24px; font-weight:500 }
+  .msg.bad { background:#FDECEA; color:var(--bad) }
+  .msg.ok { background:#DDF3E8; color:var(--ok) }
+  .q { border:1px solid var(--line); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:8px }
+  .q b { font-weight:600; color:var(--ink) }
+  .opts { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:4px 16px; font-size:16px; line-height:24px }
+  @media (max-width:640px){ .opts { grid-template-columns:1fr } }
+  .opts .right { color:var(--ok); font-weight:600 }
+  [hidden] { display:none !important }
+  ul.skips { margin:8px 0 0; padding-left:20px; font-size:14px; line-height:20px }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="gate" class="msg bad" hidden>Please <a href="/">log in as admin</a> first.</div>
+
+  <section class="card" id="subjects-card" hidden>
+    <h2>Choose a subject</h2>
+    <div class="subjects" id="subjects"></div>
+  </section>
+
+  <section class="card" id="form-card" hidden>
+    <h2 id="form-title">Add a question</h2>
+    <form id="qform" class="row" style="flex-direction:column;align-items:stretch;gap:16px">
+      <label>Question <textarea name="body" required></textarea></label>
+      <div class="grid2">
+        <label>Option A <input name="a" required autocomplete="off"></label>
+        <label>Option B <input name="b" required autocomplete="off"></label>
+        <label>Option C <input name="c" required autocomplete="off"></label>
+        <label>Option D <input name="d" required autocomplete="off"></label>
+      </div>
+      <label style="max-width:240px">Correct answer
+        <select name="correct" required>
+          <option value="">Select</option><option>A</option><option>B</option><option>C</option><option>D</option>
+        </select>
+      </label>
+      <div class="row">
+        <button class="primary" type="submit" id="save-btn">Save question</button>
+        <button class="ghost" type="button" id="cancel-edit" hidden>Cancel edit</button>
+      </div>
+    </form>
+    <div id="form-msg" class="msg" role="status" hidden></div>
+  </section>
+
+  <section class="card" id="import-card" hidden>
+    <h2>Bulk upload (CSV)</h2>
+    <p>Columns: subject, question, option_a, option_b, option_c, option_d, correct. In Excel or Google Sheets, save as CSV. Up to 500 rows at a time.</p>
+    <div class="row">
+      <input type="file" id="csv" accept=".csv,text/csv" style="height:auto;padding:8px 12px;max-width:360px">
+      <a class="ghost" href="/questions-template.csv" download>Download template</a>
+    </div>
+    <div id="import-msg" class="msg" role="status" hidden></div>
+  </section>
+
+  <section class="card" id="list-card" hidden>
+    <h2 id="list-title">Questions</h2>
+    <div id="list" style="display:flex;flex-direction:column;gap:12px"></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+let subjects = [], max = 50, current = null, editing = null, loaded = [];
+
+async function api(path, body, method) {
+  const res = await fetch(path, {
+    method: method || (body ? 'POST' : 'GET'),
+    headers: body ? { 'content-type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+function note(el, text, kind) { el.textContent = text; el.className = 'msg ' + kind; el.hidden = !text; }
+
+async function loadSubjects() {
+  const r = await api('/api/admin/questions/subjects');
+  if (r.status === 401) { $('gate').hidden = false; return false; }
+  subjects = r.data.subjects; max = r.data.max;
+  $('subjects').innerHTML = subjects.map((s) => `
+    <button type="button" class="subj" data-id="${esc(s.id)}" aria-pressed="${current === s.id}">
+      <span>${esc(s.name)}</span>
+      <span class="bar ${s.count >= max ? 'full' : ''}"><i style="width:${Math.min(100, s.count / max * 100)}%"></i></span>
+      <span class="small">${s.count} / ${max} questions</span>
+    </button>`).join('');
+  document.querySelectorAll('.subj').forEach((b) => b.onclick = () => pick(b.dataset.id));
+  return true;
+}
+
+async function pick(id) {
+  current = id; editing = null;
+  resetForm();
+  await loadSubjects();
+  await loadList();
+  ['form-card', 'import-card', 'list-card'].forEach((x) => $(x).hidden = false);
+}
+
+async function loadList() {
+  const name = subjects.find((s) => s.id === current)?.name ?? '';
+  const r = await api('/api/admin/questions?subject=' + encodeURIComponent(current));
+  loaded = r.data.questions || [];
+  $('list-title').textContent = `${name}: ${loaded.length} of ${max} questions`;
+  $('list').innerHTML = loaded.length ? loaded.map((q, i) => `
+    <div class="q">
+      <div><b>${i + 1}.</b> ${esc(q.body)}</div>
+      <ul class="opts">${['a','b','c','d'].map((k) => `<li class="${q.correct === k.toUpperCase() ? 'right' : ''}">${k.toUpperCase()}. ${esc(q[k])}${q.correct === k.toUpperCase() ? ' ✓' : ''}</li>`).join('')}</ul>
+      <div class="row">
+        <button class="ghost" type="button" data-edit="${q.id}">Edit</button>
+        <button class="ghost danger" type="button" data-del="${q.id}">Delete</button>
+      </div>
+    </div>`).join('') : '<p>No questions yet. Add one above or upload a CSV.</p>';
+  document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => startEdit(Number(b.dataset.edit)));
+  document.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => del(Number(b.dataset.del)));
+}
+
+function resetForm() {
+  $('qform').reset(); editing = null;
+  $('form-title').textContent = 'Add a question';
+  $('cancel-edit').hidden = true; note($('form-msg'), '', 'ok');
+}
+function startEdit(id) {
+  const q = loaded.find((x) => x.id === id); if (!q) return;
+  editing = id;
+  const f = $('qform');
+  f.body.value = q.body; f.a.value = q.a; f.b.value = q.b; f.c.value = q.c; f.d.value = q.d; f.correct.value = q.correct;
+  $('form-title').textContent = 'Edit question';
+  $('cancel-edit').hidden = false;
+  $('form-card').scrollIntoView({ behavior: 'smooth' });
+}
+$('cancel-edit').onclick = resetForm;
+
+$('qform').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const payload = { subjectId: current, body: f.body.value, a: f.a.value, b: f.b.value, c: f.c.value, d: f.d.value, correct: f.correct.value };
+  $('save-btn').disabled = true;
+  const r = editing ? await api('/api/admin/questions/' + editing, payload, 'PUT') : await api('/api/admin/questions', payload);
+  $('save-btn').disabled = false;
+  if (!r.ok) return note($('form-msg'), r.data.error || 'Could not save.', 'bad');
+  const wasEdit = !!editing;
+  resetForm();
+  note($('form-msg'), wasEdit ? 'Question updated.' : 'Question added.', 'ok');
+  await loadSubjects(); await loadList();
+};
+
+async function del(id) {
+  if (!confirm('Delete this question?')) return;
+  const r = await api('/api/admin/questions/' + id, null, 'DELETE');
+  if (!r.ok) return alert(r.data.error || 'Could not delete.');
+  await loadSubjects(); await loadList();
+}
+
+// Small CSV reader: handles quoted fields, commas and line breaks inside quotes.
+function parseCsv(text) {
+  text = text.replace(/^﻿/, '');
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur); cur = ''; rows.push(row); row = [];
+    } else cur += ch;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c.trim() !== ''));
+}
+
+$('csv').onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const out = $('import-msg');
+  const table = parseCsv(await file.text());
+  e.target.value = '';
+  if (table.length < 2) return note(out, 'The file has no questions in it.', 'bad');
+  const head = table[0].map((h) => h.trim().toLowerCase());
+  const need = ['subject', 'question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct'];
+  const miss = need.filter((n) => !head.includes(n));
+  if (miss.length) return note(out, 'Missing column(s): ' + miss.join(', ') + '. Use the template.', 'bad');
+  const col = (r, n) => r[head.indexOf(n)] ?? '';
+  const rows = table.slice(1).map((r, i) => ({
+    row: i + 2, subject: col(r, 'subject'), question: col(r, 'question'),
+    a: col(r, 'option_a'), b: col(r, 'option_b'), c: col(r, 'option_c'), d: col(r, 'option_d'), correct: col(r, 'correct'),
+  }));
+  note(out, 'Uploading…', 'ok');
+  const r = await api('/api/admin/questions/import', { rows: rows.map((x) => ({ ...x, body: x.question })) });
+  if (!r.ok) return note(out, r.data.error || 'Upload failed.', 'bad');
+  const { added, skipped } = r.data;
+  out.className = 'msg ' + (skipped.length ? 'bad' : 'ok');
+  out.innerHTML = `${added} question(s) added.` + (skipped.length
+    ? ` ${skipped.length} row(s) skipped:<ul class="skips">${skipped.slice(0, 30).map((s) => `<li>Row ${s.row}: ${esc(s.reason)}</li>`).join('')}</ul>` : '');
+  out.hidden = false;
+  await loadSubjects(); if (current) await loadList();
+};
+
+(async () => { if (await loadSubjects()) $('subjects-card').hidden = false; })();
+</script>
+<script src="/shell.js" data-page="questions" data-title="Question bank"></script>
+</body>
+</html>

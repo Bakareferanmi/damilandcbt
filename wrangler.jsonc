@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "damiland-cbt",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+
+  // Web pages live in /public. Requests to /api/* go to the Worker first.
+  "assets": {
+    "directory": "./public",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Your database. The binding name DB is what the code uses.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "damiland-cbt",
+      "database_id": "f9ba1870-690b-4403-8263-4f418b14830a",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "observability": { "enabled": true }
+}

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Students · Damiland CBT</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+  body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink) }
+  .wrap { display:flex; flex-direction:column; gap:24px }
+  h2 { margin:0; font-size:20px; line-height:28px; font-weight:600 }
+  p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
+  label { font-size:16px; line-height:24px; font-weight:500; display:flex; flex-direction:column; gap:8px }
+  input, select { height:48px; padding:0 16px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; color:var(--ink); background:#fff; width:100% }
+  .form { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:16px; align-items:end }
+  @media (max-width:1000px){ .form { grid-template-columns:1fr 1fr } }
+  @media (max-width:760px){ .form { grid-template-columns:1fr } }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+  .scroll { overflow-x:auto }
+  table { width:100%; border-collapse:collapse; font-size:16px; line-height:24px }
+  th, td { text-align:left; padding:12px; border-bottom:1px solid var(--line); white-space:nowrap }
+  th { font-size:14px; line-height:20px; color:var(--muted); font-weight:600 }
+  td .ghost { height:36px; padding:0 12px; font-size:14px }
+  dialog { border:0; border-radius:16px; padding:24px; max-width:440px; width:calc(100% - 32px) }
+  dialog::backdrop { background:rgba(11,18,48,.5) }
+  dialog form { display:flex; flex-direction:column; gap:16px }
+  dialog .acts { display:flex; gap:12px; justify-content:flex-end; flex-wrap:wrap }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h2>Register a student</h2>
+    <form class="form" id="reg">
+      <label>First name <input name="firstName" placeholder="First name" autocomplete="off" autocapitalize="words" data-caps required></label>
+      <label>Last name <input name="lastName" placeholder="Last name" autocomplete="off" autocapitalize="words" data-caps required></label>
+      <label>Class
+        <select name="className" required><option value="">Select class</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
+      </label>
+      <button class="btn" type="submit">Register</button>
+    </form>
+    <div id="reg-msg" class="msg bad" role="alert" hidden></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <h2 style="flex:1">All students <span id="count" class="pill blue"></span></h2>
+      <input id="q" placeholder="Search name or code" style="max-width:240px" aria-label="Search">
+      <select id="cls" style="max-width:200px" aria-label="Class"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Code</th><th>Name</th><th>Class</th><th>Exam</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- Login details to give the student. Passwords are stored scrambled, so they are only visible right now. -->
+<dialog id="slipd">
+  <h2>Login details</h2>
+  <p style="margin:8px 0 16px">Give these to the student now. The password cannot be shown again (you can reset it later).</p>
+  <div class="slip" id="slip"></div>
+  <div class="acts" style="margin-top:16px"><button class="ghost" id="print">Print</button><button class="btn" id="slip-close">Done</button></div>
+</dialog>
+
+<dialog id="editd">
+  <h2>Edit student</h2>
+  <form id="edit" style="margin-top:16px">
+    <label>First name <input name="firstName" autocapitalize="words" data-caps required></label>
+    <label>Last name <input name="lastName" autocapitalize="words" data-caps required></label>
+    <label>Class <select name="className" required><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select></label>
+    <div id="edit-msg" class="msg bad" hidden></div>
+    <div class="acts"><button type="button" class="ghost" id="edit-cancel">Cancel</button><button class="btn" type="submit">Save</button></div>
+  </form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+let students = [], editing = null;
+// Capital letter at the start of every name while typing: "ada okafor-eze" -> "Ada Okafor-Eze"
+document.addEventListener('input', (e) => {
+  if (!e.target.matches('[data-caps]')) return;
+  const el = e.target, pos = el.selectionStart;
+  el.value = el.value.replace(/(^|[\s\-'’])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
+  el.setSelectionRange(pos, pos);
+});
+async function api(path, body, method) {
+  const r = await fetch(path, { method: method || (body ? 'POST' : 'GET'), headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+  return { ok: r.ok, data: await r.json().catch(() => ({})) };
+}
+async function load() { const r = await api('/api/admin/students'); if (r.ok) { students = r.data.students; draw(); } }
+const STATUS = { none: ['Not started', ''], in_progress: ['In progress', 'blue'], submitted: ['Submitted', 'on'] };
+function draw() {
+  const q = $('q').value.trim().toLowerCase(), c = $('cls').value;
+  const list = students.filter((s) => (!c || s.className === c) && (!q || s.fullName.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)));
+  $('count').textContent = list.length;
+  $('rows').innerHTML = list.length ? list.map((s) => `<tr>
+    <td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td>
+    <td><span class="pill ${STATUS[s.status][1]}">${STATUS[s.status][0]}</span></td>
+    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button><button class="ghost" data-reset="${esc(s.code)}">Reset password</button></div></td></tr>`).join('')
+    : '<tr><td colspan="5">No students found.</td></tr>';
+  document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => openEdit(b.dataset.edit));
+  document.querySelectorAll('[data-reset]').forEach((b) => b.onclick = () => resetPw(b.dataset.reset));
+}
+$('q').oninput = draw; $('cls').onchange = draw;
+
+function showSlip(name, cls, code, password) {
+  $('slip').innerHTML = `<span class="k">Student</span><span style="font-weight:600">${esc(name)} · ${esc(cls)}</span>
+    <span class="k" style="margin-top:8px">Student code</span><span class="v">${esc(code)}</span>
+    <span class="k" style="margin-top:8px">Password</span><span class="v">${esc(password)}</span>
+    <span class="k" style="margin-top:8px">Log in at this website with the details above.</span>`;
+  $('slipd').showModal();
+}
+$('slip-close').onclick = () => $('slipd').close();
+$('print').onclick = () => window.print();
+
+$('reg').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const r = await api('/api/admin/students', { firstName: f.get('firstName'), lastName: f.get('lastName'), className: f.get('className') });
+  $('reg-msg').hidden = !!r.ok;
+  if (!r.ok) { $('reg-msg').textContent = r.data.error || 'Could not register.'; return; }
+  e.target.reset(); showSlip(r.data.fullName, r.data.className, r.data.code, r.data.password); load();
+};
+async function resetPw(code) {
+  const s = students.find((x) => x.code === code);
+  if (!confirm(`Give ${s.fullName} a new password? The old one will stop working.`)) return;
+  const r = await api(`/api/admin/students/${code}/reset-password`, {});
+  if (!r.ok) return alert(r.data.error || 'Could not reset.');
+  showSlip(s.fullName, s.className, code, r.data.password);
+}
+function openEdit(code) {
+  editing = students.find((x) => x.code === code);
+  const f = $('edit'); const parts = editing.fullName.split(' '); f.firstName.value = parts[0]; f.lastName.value = parts.slice(1).join(' '); f.className.value = editing.className;
+  $('edit-msg').hidden = true; $('editd').showModal();
+}
+$('edit-cancel').onclick = () => $('editd').close();
+$('edit').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const r = await api('/api/admin/students/' + editing.code, { firstName: f.firstName.value, lastName: f.lastName.value, className: f.className.value }, 'PUT');
+  if (!r.ok) { $('edit-msg').textContent = r.data.error || 'Could not save.'; $('edit-msg').hidden = false; return; }
+  $('editd').close(); load();
+};
+load();
+</script>
+<script src="/shell.js" data-page="students" data-title="Students"></script>
+</body>
+</html>
