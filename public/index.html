@@ -38,6 +38,10 @@
   .field .eye { position:absolute; right:4px; width:48px; height:48px; border:0; background:transparent; color:var(--muted); cursor:pointer; border-radius:8px; display:flex; align-items:center; justify-content:center }
   .field.has-eye input { padding-right:56px }
   .submit { height:56px; font-size:16px }
+  .credit { margin-top:8px; padding-top:16px; border-top:1px solid #D5DBEC; text-align:center; font-size:13px; line-height:20px; color:var(--muted) }
+  .credit b { color:var(--ink); font-weight:600 }
+  .credit a { color:var(--brand); font-weight:600; text-decoration:none }
+  .credit a:hover { text-decoration:underline }
   .foot { text-align:center; font-size:14px; line-height:20px; color:var(--muted) }
   @media (max-width:880px) {
     .split { grid-template-columns:1fr }
@@ -56,7 +60,7 @@
       <p>Sit your exam with confidence. Clear screens, a running timer and answers saved as you go.</p>
     </div>
     <ul>
-      <li><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Timed exam, kept by the server</li>
+      <li><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Timed exam</li>
       <li><svg class="ico" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>Every answer saved automatically</li>
       <li><svg class="ico" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>Results reviewed by your school</li>
     </ul>
@@ -89,6 +93,11 @@
 
       <div id="login-msg" class="msg bad" role="alert" hidden></div>
       <p class="foot">Lost your password? Ask your school admin to reset it.<br><a href="/admin" style="color:var(--brand);font-weight:600">School staff? Admin sign in</a></p>
+      <footer class="credit">
+        <div><b>&copy; 2026 Damiland CBT</b></div>
+        <div>A property of Damiland High School</div>
+        <div>Built by <a href="https://beepeelabs.cv" target="_blank" rel="noopener">BeepeeLabs</a> &amp; Damiland Tech Club</div>
+      </footer>
     </div>
   </main>
 </div>

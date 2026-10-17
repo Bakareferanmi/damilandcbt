@@ -11,7 +11,7 @@
 <style>
   body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink) }
   .split { min-height:100vh; display:grid; grid-template-columns:1fr 1fr }
-  .hero { background:linear-gradient(160deg,#0B1230 0%,#0B1F5C 100%); color:#fff; padding:48px; display:flex; flex-direction:column; justify-content:space-between; gap:32px }
+  .hero { background:var(--brand); color:#fff; padding:48px; display:flex; flex-direction:column; justify-content:space-between; gap:32px }
   .chip { width:72px; height:72px; background:#fff; border-radius:16px; display:flex; align-items:center; justify-content:center }
   .chip img { width:48px; height:48px; object-fit:contain }
   .hero h2 { margin:0; font-size:36px; line-height:44px; font-weight:700 }
@@ -38,6 +38,10 @@
   .field .eye { position:absolute; right:4px; width:48px; height:48px; border:0; background:transparent; color:var(--muted); cursor:pointer; border-radius:8px; display:flex; align-items:center; justify-content:center }
   .field.has-eye input { padding-right:56px }
   .submit { height:56px; font-size:16px }
+  .credit { margin-top:8px; padding-top:16px; border-top:1px solid #D5DBEC; text-align:center; font-size:13px; line-height:20px; color:var(--muted) }
+  .credit b { color:var(--ink); font-weight:600 }
+  .credit a { color:var(--brand); font-weight:600; text-decoration:none }
+  .credit a:hover { text-decoration:underline }
   .foot { text-align:center; font-size:14px; line-height:20px; color:var(--muted) }
   @media (max-width:880px) {
     .split { grid-template-columns:1fr }
@@ -89,6 +93,11 @@
 
       <div id="login-msg" class="msg bad" role="alert" hidden></div>
       <p class="foot">Another admin can add you or change your password in Settings.<br><a href="/" style="color:var(--brand);font-weight:600">Student? Log in here</a></p>
+      <footer class="credit">
+        <div><b>&copy; 2026 Damiland CBT</b></div>
+        <div>A property of Damiland High School</div>
+        <div>Built by <a href="https://beepeelabs.cv" target="_blank" rel="noopener">BeepeeLabs</a> &amp; Damiland Tech Club</div>
+      </footer>
     </div>
   </main>
 </div>
