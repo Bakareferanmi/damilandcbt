@@ -10,16 +10,89 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
 <style>
   body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink) }
+  :root { --warn:#8A4B00; --warn-bg:#FFF1D6; --amber:#E08A00; --live:#12A150 }
   .wrap { display:flex; flex-direction:column; gap:24px }
+  .wrap:fullscreen { background:var(--bg); padding:24px; overflow:auto }
   h2 { margin:0; font-size:20px; line-height:28px; font-weight:600 }
-  p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
+  p { margin:0 }
+
+  /* ---- hero ---- */
+  .hero { background:linear-gradient(135deg,var(--brand) 0%,#0A44C9 100%); color:#fff; border-radius:20px; padding:24px; display:flex; flex-direction:column; gap:16px; position:relative; overflow:hidden }
+  .hero::after { content:''; position:absolute; right:-60px; top:-60px; width:220px; height:220px; border-radius:50%; background:rgba(255,255,255,.08) }
+  .hero-top { display:flex; align-items:center; gap:16px; flex-wrap:wrap; position:relative; z-index:1 }
+  .hero h2 { color:#fff; font-size:24px; line-height:32px; font-weight:700; flex:1; min-width:200px }
+  .hero h2 small { display:block; font-size:14px; line-height:20px; font-weight:500; color:#DCE5FB }
+  .badge { display:inline-flex; align-items:center; gap:8px; padding:4px 16px; height:32px; border-radius:16px; background:rgba(255,255,255,.16); font-size:14px; font-weight:700; letter-spacing:.06em; text-transform:uppercase }
+  .dot { position:relative; width:10px; height:10px; border-radius:50%; background:#8FA3C9 }
+  .badge.on .dot { background:#4ADE80 }
+  .badge.on .dot::after { content:''; position:absolute; inset:-5px; border-radius:50%; border:2px solid #4ADE80; animation:ping 1.6s ease-out infinite }
+  .hero .ghost { background:transparent; color:#fff; border-color:rgba(255,255,255,.6); height:40px; font-size:14px }
+  .hero .ghost:hover { background:rgba(255,255,255,.14) }
+  .stack { position:relative; z-index:1; display:flex; height:16px; border-radius:8px; overflow:hidden; background:rgba(255,255,255,.18) }
+  .stack i { display:block; height:100%; transition:width .8s cubic-bezier(.2,.8,.2,1) }
+  .stack .s-done { background:#4ADE80 }
+  .stack .s-live { background:#fff; background-image:repeating-linear-gradient(45deg,rgba(1,48,159,.18) 0 8px,transparent 8px 16px); background-size:22px 22px; animation:slide 1s linear infinite }
+  .legend { position:relative; z-index:1; display:flex; gap:24px; flex-wrap:wrap; font-size:14px; line-height:20px; color:#E6EDFC }
+  .legend b { color:#fff }
+
+  /* ---- tiles ---- */
   .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px }
-  .tile { background:#fff; border:2px solid var(--line); border-radius:16px; padding:16px 24px; display:flex; flex-direction:column; gap:4px; cursor:pointer; text-align:left; font-family:inherit; color:inherit }
+  .tile { background:#fff; border:2px solid var(--line); border-radius:16px; padding:16px 24px; display:flex; gap:16px; align-items:center; cursor:pointer; text-align:left; font-family:inherit; color:inherit; transition:transform .15s, border-color .15s, box-shadow .15s }
+  .tile:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(11,18,48,.08) }
+  .tile:focus-visible { outline:3px solid var(--brand); outline-offset:2px }
   .tile[aria-pressed="true"] { border-color:var(--brand); background:var(--tint) }
-  .tile b { font-size:32px; line-height:40px; font-weight:700; color:var(--brand) }
-  .tile span { font-size:14px; line-height:20px; color:var(--muted); font-weight:500 }
-  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+  .tile .ic { width:44px; height:44px; flex:0 0 44px; border-radius:12px; background:var(--tint); color:var(--brand); display:flex; align-items:center; justify-content:center; position:relative }
+  .tile[aria-pressed="true"] .ic { background:#fff }
+  .tile .ic.pulse::after { content:''; position:absolute; inset:0; border-radius:12px; border:2px solid var(--brand); animation:ring 1.8s ease-out infinite }
+  .tile b { display:block; font-size:32px; line-height:40px; font-weight:700; color:var(--brand); font-variant-numeric:tabular-nums }
+  .tile span.l { font-size:14px; line-height:20px; color:var(--muted); font-weight:500 }
+
+  /* ---- toolbar ---- */
+  .bar-row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
   input, select { height:44px; padding:0 12px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; background:#fff; color:var(--ink) }
+  .seg { display:inline-grid; grid-auto-flow:column; gap:4px; padding:4px; background:#E4E8F4; border-radius:12px }
+  .seg button { height:36px; padding:0 16px; border:0; border-radius:8px; background:transparent; color:var(--muted); font:600 14px 'Poppins',sans-serif; cursor:pointer }
+  .seg button[aria-pressed="true"] { background:#fff; color:var(--brand); box-shadow:0 1px 4px rgba(11,18,48,.12) }
+  .upd { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--muted) }
+  .upd .dot { background:var(--live) }
+  .upd.off .dot { background:#9AA3BD }
+  .upd:not(.off) .dot::after { content:''; position:absolute; inset:-4px; border-radius:50%; border:2px solid var(--live); animation:ping 1.6s ease-out infinite }
+
+  /* ---- layout: cards + feed ---- */
+  .monmain { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; align-items:start }
+  @media (min-width:1100px) { .monmain { grid-template-columns:minmax(0,1fr) 320px } .feed { position:sticky; top:24px } }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:16px }
+  .empty { padding:48px 16px; text-align:center; color:var(--muted); background:#fff; border:2px dashed var(--line); border-radius:16px; grid-column:1/-1 }
+
+  .st { background:#fff; border:2px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px; position:relative; transition:border-color .3s, box-shadow .3s, transform .3s; animation:pop .4s ease-out }
+  .st.in_progress { border-color:#9DB3EC; animation:pop .4s ease-out, glow 2.4s ease-in-out infinite }
+  .st.submitted { border-color:#9ED9B9 }
+  .st.low { border-color:var(--amber); animation:pop .4s ease-out, warnglow 1.4s ease-in-out infinite }
+  .st.crit { border-color:var(--bad); animation:pop .4s ease-out, critglow .8s ease-in-out infinite }
+  .st.bump { transform:scale(1.025) }
+  .st .top { display:flex; gap:12px; align-items:center }
+  .av { position:relative; width:56px; height:56px; flex:0 0 56px }
+  .av svg { width:56px; height:56px; transform:rotate(-90deg) }
+  .av .trk { fill:none; stroke:var(--grid); stroke-width:5 }
+  .av .arc { fill:none; stroke:var(--brand); stroke-width:5; stroke-linecap:round; transition:stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1), stroke .3s }
+  .st.submitted .arc { stroke:var(--ok) }
+  .st.none .arc { stroke:transparent }
+  .av span { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; color:var(--brand) }
+  .st.submitted .av span { color:var(--ok) }
+  .st.none .av span { color:var(--muted) }
+  .who { min-width:0; flex:1 }
+  .who b { display:block; font-size:16px; line-height:24px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .who span { display:block; font-size:12px; line-height:16px; color:var(--muted); font-weight:500 }
+  .meta { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; line-height:20px }
+  .meta .cnt { color:var(--muted); font-variant-numeric:tabular-nums }
+  .time { font-variant-numeric:tabular-nums; font-weight:700; padding:2px 12px; border-radius:12px; background:var(--tint); color:var(--brand); font-size:14px }
+  .time.low { background:var(--warn-bg); color:var(--warn) }
+  .time.crit { background:#FBE3E1; color:var(--bad); animation:blink 1s steps(2) infinite }
+  .mini { height:8px; border-radius:4px; background:var(--grid); overflow:hidden }
+  .mini i { display:block; height:100%; background:var(--brand); border-radius:4px; transition:width .9s cubic-bezier(.2,.8,.2,1) }
+  .st.submitted .mini i { background:var(--ok) }
+
+  /* ---- table view ---- */
   .scroll { overflow-x:auto }
   table { width:100%; border-collapse:collapse; font-size:16px; line-height:24px }
   th, td { text-align:left; padding:12px; border-bottom:1px solid var(--line); white-space:nowrap }
@@ -28,73 +101,292 @@
   .bar { flex:1; height:8px; border-radius:4px; background:var(--grid); overflow:hidden }
   .bar i { display:block; height:100%; background:var(--brand) }
   .bar.done i { background:var(--ok) }
-  .time { font-variant-numeric:tabular-nums; font-weight:600 }
-  .time.low { color:var(--bad) }
-  .live { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--muted) }
-  .live::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--ok) }
-  .live.off::before { background:#9AA3BD }
+
+  /* ---- activity feed ---- */
+  .feed h2 { display:flex; align-items:center; gap:8px }
+  .events { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; max-height:520px; overflow:auto }
+  .events li { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); font-size:14px; line-height:20px; animation:slidein .45s ease-out }
+  .events li:last-child { border-bottom:0 }
+  .events .pt { width:10px; height:10px; flex:0 0 10px; border-radius:50%; margin-top:5px; background:var(--brand) }
+  .events .ok .pt { background:var(--ok) } .events .warn .pt { background:var(--amber) } .events .bad .pt { background:var(--bad) }
+  .events time { display:block; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums }
+  .events .none { color:var(--muted); padding:16px 0 }
+
+  /* ---- celebration ---- */
+  .done-banner { display:flex; align-items:center; gap:12px; padding:16px 24px; border-radius:16px; background:#DDF3E8; color:var(--ok); font-weight:600; animation:pop .5s ease-out }
+  .confetti { position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:50 }
+  .confetti i { position:absolute; top:-12px; width:10px; height:16px; border-radius:2px; animation:fall linear forwards }
+
+  @keyframes ping { 0% { transform:scale(.6); opacity:.9 } 100% { transform:scale(1.9); opacity:0 } }
+  @keyframes ring { 0% { transform:scale(1); opacity:.8 } 100% { transform:scale(1.35); opacity:0 } }
+  @keyframes slide { to { background-position:22px 0 } }
+  @keyframes pop { from { opacity:0; transform:translateY(8px) scale(.98) } to { opacity:1; transform:none } }
+  @keyframes glow { 0%,100% { box-shadow:0 0 0 0 rgba(1,48,159,0) } 50% { box-shadow:0 0 0 6px rgba(1,48,159,.12) } }
+  @keyframes warnglow { 0%,100% { box-shadow:0 0 0 0 rgba(224,138,0,0) } 50% { box-shadow:0 0 0 6px rgba(224,138,0,.28) } }
+  @keyframes critglow { 0%,100% { box-shadow:0 0 0 0 rgba(140,29,24,0) } 50% { box-shadow:0 0 0 7px rgba(140,29,24,.3) } }
+  @keyframes blink { 50% { opacity:.55 } }
+  @keyframes slidein { from { opacity:0; transform:translateX(16px) } to { opacity:1; transform:none } }
+  @keyframes fall { to { transform:translateY(105vh) rotate(720deg); opacity:.9 } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important } .confetti { display:none } }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="tiles" id="tiles"></div>
-  <div class="card">
-    <div class="row">
-      <h2 style="flex:1">Students <span id="count" class="pill blue"></span></h2>
-      <input id="q" placeholder="Search name or code" aria-label="Search" style="max-width:240px">
-      <select id="cls" aria-label="Class"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
-      <span class="live" id="live">Updating every 10 seconds</span>
-      <button class="ghost" id="pause">Pause</button>
+<div class="wrap" id="wrap">
+  <section class="hero" aria-live="polite">
+    <div class="hero-top">
+      <h2><small id="sess">Live exam monitor</small><span id="examName">Loading…</span></h2>
+      <span class="badge" id="badge"><span class="dot"></span><span id="badgeText">Connecting</span></span>
+      <button class="ghost" id="full" type="button">Full screen</button>
     </div>
-    <div class="scroll"><table>
-      <thead><tr><th>Code</th><th>Name</th><th>Class</th><th>Group</th><th>Status</th><th>Answered</th><th>Time left</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table></div>
+    <div class="stack" role="img" aria-label="Progress of the whole class"><i class="s-done" id="s-done" style="width:0"></i><i class="s-live" id="s-live" style="width:0"></i></div>
+    <div class="legend"><span><b id="l-done">0</b> submitted</span><span><b id="l-live">0</b> writing now</span><span><b id="l-none">0</b> not started</span><span id="l-len"></span></div>
+  </section>
+
+  <div class="done-banner" id="donebar" hidden>
+    <svg class="ico" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg> Everyone has submitted. All results are ready on the Results page.
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="bar-row">
+    <input id="q" placeholder="Search name or code" aria-label="Search" style="max-width:240px">
+    <select id="cls" aria-label="Class"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
+    <select id="sort" aria-label="Sort by">
+      <option value="attention">Sort: needs attention first</option><option value="time">Sort: least time left</option>
+      <option value="progress">Sort: most answered</option><option value="name">Sort: name</option><option value="code">Sort: student code</option>
+    </select>
+    <div class="seg" role="group" aria-label="View"><button type="button" data-v="cards" aria-pressed="true">Cards</button><button type="button" data-v="table" aria-pressed="false">Table</button></div>
+    <span style="flex:1"></span>
+    <span class="upd" id="upd"><span class="dot"></span><span id="updText">Live</span></span>
+    <button class="ghost" id="pause" type="button" style="height:40px;font-size:14px">Pause</button>
+  </div>
+
+  <div class="monmain">
+    <div>
+      <div class="cards" id="cards"></div>
+      <div class="card" id="tablebox" hidden><div class="scroll"><table>
+        <thead><tr><th>Code</th><th>Name</th><th>Class</th><th>Group</th><th>Status</th><th>Answered</th><th>Time left</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div></div>
+    </div>
+    <aside class="card feed" aria-label="Activity">
+      <h2>Activity</h2>
+      <ul class="events" id="events"><li class="none">Nothing yet. Events appear here as students start, submit or run low on time.</li></ul>
+    </aside>
   </div>
 </div>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-let students = [], filter = 'all', paused = false, fetchedAt = 0;
-const LABEL = { none: ['Not started', ''], in_progress: ['In progress', 'blue'], submitted: ['Submitted', 'on'] };
+const P = (d) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  all: P('<circle cx="9" cy="8" r="4"/><path d="M2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1"/><path d="M16 4.5a4 4 0 0 1 0 7"/><path d="M19 14.5a6 6 0 0 1 3 5.5v1"/>'),
+  none: P('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  in_progress: P('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  submitted: P('<path d="m5 12 5 5L20 7"/>'),
+};
+const LABEL = { none: ['Not started', ''], in_progress: ['Writing', 'blue'], submitted: ['Submitted', 'on'] };
 const mmss = (s) => { const h = Math.floor(s / 3600), m = String(Math.floor(s % 3600 / 60)).padStart(2, '0'), x = String(s % 60).padStart(2, '0'); return (h ? h + ':' : '') + m + ':' + x; };
+const initials = (n) => n.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+const R = 24, CIRC = 2 * Math.PI * R;
+
+let students = [], filter = 'all', view = 'cards', paused = false, fetchedAt = 0, info = { exam: '', minutes: 0, live: true };
+let prev = null, wasAllDone = false;
+const els = new Map(); // student code -> card element (updated in place so animations keep running)
+const events = [];
+
+const leftNow = (s) => s.secondsLeft === null ? null : Math.max(0, s.secondsLeft - Math.floor((Date.now() - fetchedAt) / 1000));
+const urgency = (left) => left === null ? '' : left === 0 ? '' : left <= 60 ? 'crit' : left <= 300 ? 'low' : '';
+
+function say(kind, html) {
+  events.unshift({ kind, html, at: new Date() });
+  if (events.length > 40) events.pop();
+  const ul = $('events');
+  ul.innerHTML = events.map((e) => `<li class="${e.kind}"><span class="pt"></span><div>${e.html}<time>${e.at.toLocaleTimeString('en-GB')}</time></div></li>`).join('');
+}
+
+// Compares the new data with the previous poll and writes the interesting differences to the activity feed.
+function diff(next) {
+  if (prev) {
+    const old = new Map(prev.map((s) => [s.code, s]));
+    for (const s of next) {
+      const o = old.get(s.code); if (!o) continue;
+      const name = `<b>${esc(s.fullName)}</b>`;
+      if (o.status === 'none' && s.status !== 'none') say('', `${name} started (Group ${s.groupNo})`);
+      if (o.status !== 'submitted' && s.status === 'submitted') say('ok', `${name} submitted, ${s.answered}/${s.total} answered`);
+      if (s.status === 'in_progress' && o.status === 'in_progress' && s.total) {
+        if (o.answered / s.total < .5 && s.answered / s.total >= .5) say('', `${name} is halfway`);
+        const a = o.secondsLeft, b = s.secondsLeft;
+        if (a !== null && b !== null) { if (a > 300 && b <= 300) say('warn', `${name} has 5 minutes left`); if (a > 60 && b <= 60) say('bad', `${name} has 1 minute left`); }
+      }
+    }
+  }
+  prev = next.map((s) => ({ ...s }));
+}
 
 async function load() {
   try {
     const r = await fetch('/api/admin/results/monitor');
     if (!r.ok) return;
-    students = (await r.json()).students; fetchedAt = Date.now(); draw();
+    const d = await r.json();
+    info = { exam: d.exam, minutes: d.minutes, live: d.live };
+    fetchedAt = Date.now();
+    diff(d.students);
+    students = d.students;
+    draw();
   } catch {}
 }
+
+function counts(list) {
+  const n = (st) => list.filter((s) => s.status === st).length;
+  return { all: list.length, none: n('none'), in_progress: n('in_progress'), submitted: n('submitted') };
+}
+
+function countUp(el, to) {
+  const from = Number(el.dataset.v ?? 0); el.dataset.v = to;
+  if (from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = to; return; }
+  const t0 = performance.now();
+  (function step(t) { const k = Math.min(1, (t - t0) / 500); el.textContent = Math.round(from + (to - from) * k); if (k < 1) requestAnimationFrame(step); })(t0);
+}
+
+function drawHero(all) {
+  const c = counts(all);
+  $('examName').textContent = info.exam || 'Exam';
+  $('l-len').textContent = info.minutes ? `Exam length ${info.minutes} min` : '';
+  const badge = $('badge');
+  const live = info.live && c.in_progress > 0;
+  badge.classList.toggle('on', live);
+  $('badgeText').textContent = !info.live ? 'Not the live exam' : live ? 'Live' : c.all && c.submitted === c.all ? 'Finished' : 'Waiting for students';
+  const pct = (n) => c.all ? (n / c.all * 100) + '%' : '0%';
+  $('s-done').style.width = pct(c.submitted); $('s-live').style.width = pct(c.in_progress);
+  countUp($('l-done'), c.submitted); countUp($('l-live'), c.in_progress); countUp($('l-none'), c.none);
+  const allDone = c.all > 0 && c.submitted === c.all;
+  $('donebar').hidden = !allDone;
+  if (allDone && !wasAllDone && prev && events.length) confetti();
+  wasAllDone = allDone;
+}
+
+function drawTiles(base) {
+  const c = counts(base);
+  const defs = [['all', 'Registered'], ['none', 'Not started'], ['in_progress', 'Writing now'], ['submitted', 'Submitted']];
+  if (!$('tiles').children.length) {
+    $('tiles').innerHTML = defs.map(([k, l]) => `<button class="tile" data-f="${k}"><span class="ic ${k === 'in_progress' ? 'pulse' : ''}">${ICON[k]}</span><span><b data-v="0">0</b><span class="l">${l}</span></span></button>`).join('');
+    document.querySelectorAll('.tile').forEach((b) => b.onclick = () => { filter = b.dataset.f; draw(); });
+  }
+  document.querySelectorAll('.tile').forEach((b) => { b.setAttribute('aria-pressed', filter === b.dataset.f); countUp(b.querySelector('b'), c[b.dataset.f]); });
+}
+
+function sortList(list) {
+  const key = $('sort').value;
+  const rank = { in_progress: 0, none: 1, submitted: 2 };
+  const by = {
+    attention: (a, b) => rank[a.status] - rank[b.status] || (leftNow(a) ?? 1e9) - (leftNow(b) ?? 1e9) || a.code.localeCompare(b.code),
+    time: (a, b) => (leftNow(a) ?? 1e9) - (leftNow(b) ?? 1e9),
+    progress: (a, b) => (b.total ? b.answered / b.total : -1) - (a.total ? a.answered / a.total : -1),
+    name: (a, b) => a.fullName.localeCompare(b.fullName),
+    code: (a, b) => a.code.localeCompare(b.code),
+  };
+  return [...list].sort(by[key]);
+}
+
+function cardHtml(s) {
+  return `<div class="top"><div class="av"><svg viewBox="0 0 56 56"><circle class="trk" cx="28" cy="28" r="${R}"/><circle class="arc" cx="28" cy="28" r="${R}" stroke-dasharray="${CIRC}" stroke-dashoffset="${CIRC}"/></svg><span></span></div>
+    <div class="who"><b></b><span class="sub"></span></div></div>
+    <div class="mini"><i style="width:0"></i></div>
+    <div class="meta"><span class="cnt"></span><span class="time" hidden></span></div>`;
+}
+
+function updateCard(el, s) {
+  const pct = s.total ? s.answered / s.total : 0;
+  const left = leftNow(s);
+  const u = s.status === 'in_progress' ? urgency(left) : '';
+  el.className = `st ${s.status} ${u}`;
+  el.querySelector('.arc').style.strokeDashoffset = CIRC * (1 - (s.status === 'submitted' ? 1 : pct));
+  el.querySelector('.av span').textContent = s.status === 'submitted' ? '✓' : s.status === 'none' ? initials(s.fullName) : Math.round(pct * 100) + '%';
+  el.querySelector('.who b').textContent = s.fullName; el.querySelector('.who b').title = s.fullName;
+  el.querySelector('.sub').textContent = `${s.code} · ${s.className.replace('SS3 ', '')}${s.groupNo ? ' · G' + s.groupNo : ''}`;
+  el.querySelector('.mini i').style.width = (s.status === 'none' ? 0 : pct * 100) + '%';
+  el.querySelector('.cnt').textContent = s.status === 'none' ? 'Not started' : `${s.answered}/${s.total} answered`;
+  const t = el.querySelector('.time');
+  if (s.status === 'in_progress' && left !== null) { t.hidden = false; t.dataset.left = s.secondsLeft; t.className = 'time ' + u; t.textContent = left === 0 ? 'Time up' : mmss(left); }
+  else if (s.status === 'submitted') { t.hidden = false; t.removeAttribute('data-left'); t.className = 'time'; t.style.background = '#DDF3E8'; t.style.color = 'var(--ok)'; t.textContent = 'Submitted'; }
+  else { t.hidden = true; t.removeAttribute('data-left'); }
+}
+
 function draw() {
   const cls = $('cls').value, q = $('q').value.trim().toLowerCase();
   const base = students.filter((s) => (!cls || s.className === cls) && (!q || s.fullName.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)));
-  const n = (st) => base.filter((s) => s.status === st).length;
-  $('tiles').innerHTML = [['all', base.length, 'Registered'], ['none', n('none'), 'Not started'], ['in_progress', n('in_progress'), 'In progress'], ['submitted', n('submitted'), 'Submitted']]
-    .map(([k, v, l]) => `<button class="tile" data-f="${k}" aria-pressed="${filter === k}"><b>${v}</b><span>${l}</span></button>`).join('');
-  document.querySelectorAll('.tile').forEach((b) => b.onclick = () => { filter = b.dataset.f; draw(); });
-  const list = base.filter((s) => filter === 'all' || s.status === filter);
-  $('count').textContent = list.length;
-  const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
-  $('rows').innerHTML = list.length ? list.map((s) => {
-    const pct = s.total ? Math.round(s.answered / s.total * 100) : 0;
-    const left = s.secondsLeft === null ? null : Math.max(0, s.secondsLeft - elapsed);
-    return `<tr><td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td><td>${s.groupNo ? 'Group ' + s.groupNo : '–'}</td>
-      <td><span class="pill ${LABEL[s.status][1]}">${LABEL[s.status][0]}</span></td>
-      <td>${s.status === 'none' ? '–' : `<div class="prog"><div class="bar ${s.status === 'submitted' ? 'done' : ''}"><i style="width:${pct}%"></i></div><span>${s.answered}/${s.total}</span></div>`}</td>
-      <td>${left === null ? '–' : left === 0 ? '<span class="time low">Time up</span>' : `<span class="time ${left <= 300 ? 'low' : ''}" data-left="${s.secondsLeft}">${mmss(left)}</span>`}</td></tr>`;
-  }).join('') : '<tr><td colspan="7">No students to show.</td></tr>';
+  drawHero(students);
+  drawTiles(base);
+  const list = sortList(base.filter((s) => filter === 'all' || s.status === filter));
+
+  $('cards').hidden = view !== 'cards'; $('tablebox').hidden = view !== 'table';
+  if (view === 'cards') {
+    const keep = new Set(list.map((s) => s.code));
+    for (const [code, el] of els) if (!keep.has(code)) { el.remove(); els.delete(code); }
+    const box = $('cards');
+    box.querySelector('.empty')?.remove();
+    list.forEach((s, i) => {
+      let el = els.get(s.code);
+      const oldAnswered = el ? Number(el.dataset.a) : null;
+      if (!el) { el = document.createElement('div'); el.innerHTML = cardHtml(s); els.set(s.code, el); }
+      updateCard(el, s);
+      el.dataset.a = s.answered;
+      if (oldAnswered !== null && s.answered > oldAnswered) { el.classList.add('bump'); setTimeout(() => el.classList.remove('bump'), 450); }
+      if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
+    });
+    if (!list.length) box.insertAdjacentHTML('beforeend', '<div class="empty">No students to show.</div>');
+  } else {
+    $('rows').innerHTML = list.length ? list.map((s) => {
+      const pct = s.total ? Math.round(s.answered / s.total * 100) : 0;
+      const left = leftNow(s);
+      return `<tr><td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td><td>${s.groupNo ? 'Group ' + s.groupNo : '–'}</td>
+        <td><span class="pill ${LABEL[s.status][1]}">${LABEL[s.status][0]}</span></td>
+        <td>${s.status === 'none' ? '–' : `<div class="prog"><div class="bar ${s.status === 'submitted' ? 'done' : ''}"><i style="width:${pct}%"></i></div><span>${s.answered}/${s.total}</span></div>`}</td>
+        <td>${left === null ? '–' : left === 0 ? '<span class="time crit">Time up</span>' : `<span class="time ${urgency(left)}" data-left="${s.secondsLeft}">${mmss(left)}</span>`}</td></tr>`;
+    }).join('') : '<tr><td colspan="7">No students to show.</td></tr>';
+  }
 }
-$('q').oninput = draw; $('cls').onchange = draw;
-$('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause'; $('live').textContent = paused ? 'Paused' : 'Updating every 10 seconds'; $('live').classList.toggle('off', paused); if (!paused) load(); };
-setInterval(() => { if (!paused && !document.hidden) load(); }, 10000);
-// keeps the countdowns moving between updates (only the numbers change, so clicks are never interrupted)
+
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div'); box.className = 'confetti';
+  const colors = ['#01309F', '#4ADE80', '#F5B301', '#0A44C9', '#E8EEFC'];
+  for (let i = 0; i < 70; i++) {
+    const p = document.createElement('i');
+    p.style.left = Math.random() * 100 + '%'; p.style.background = colors[i % colors.length];
+    p.style.animationDuration = 2.2 + Math.random() * 2 + 's'; p.style.animationDelay = Math.random() * .6 + 's';
+    box.appendChild(p);
+  }
+  document.body.appendChild(box); setTimeout(() => box.remove(), 5200);
+}
+
+$('q').oninput = draw; $('cls').onchange = draw; $('sort').onchange = draw;
+document.querySelectorAll('.seg button').forEach((b) => b.onclick = () => {
+  view = b.dataset.v; document.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw();
+});
+$('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause'; $('upd').classList.toggle('off', paused); if (!paused) load(); setUpd(); };
+$('full').onclick = () => { const w = $('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else w.requestFullscreen?.(); };
+document.addEventListener('fullscreenchange', () => { $('full').textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen'; });
+
+function setUpd() {
+  if (paused) { $('updText').textContent = 'Paused'; return; }
+  if (!fetchedAt) { $('updText').textContent = 'Connecting…'; return; }
+  const s = Math.floor((Date.now() - fetchedAt) / 1000);
+  $('updText').textContent = s < 2 ? 'Live · just updated' : `Live · updated ${s}s ago`;
+}
+
+setInterval(() => { if (!paused && !document.hidden) load(); }, 5000);
+// Every second: only the countdown numbers and the "updated" label change, so clicks and animations are never interrupted.
 setInterval(() => {
-  const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
+  setUpd();
   document.querySelectorAll('[data-left]').forEach((el) => {
-    const left = Math.max(0, Number(el.dataset.left) - elapsed);
+    const left = Math.max(0, Number(el.dataset.left) - Math.floor((Date.now() - fetchedAt) / 1000));
+    const u = urgency(left);
     el.textContent = left === 0 ? 'Time up' : mmss(left);
-    el.classList.toggle('low', left <= 300);
+    el.classList.toggle('low', u === 'low'); el.classList.toggle('crit', u === 'crit' || left === 0);
+    const card = el.closest('.st'); if (card) { card.classList.toggle('low', u === 'low'); card.classList.toggle('crit', u === 'crit'); }
   });
 }, 1000);
 load();

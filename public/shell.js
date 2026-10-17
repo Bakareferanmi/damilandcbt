@@ -42,24 +42,31 @@
     app.querySelector('#shell-menu').onclick = () => app.classList.toggle('open');
     app.querySelector('.scrim').onclick = () => app.classList.remove('open');
     app.querySelector('#shell-logout').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.href = '/admin'; };
-    // Session switcher: which academic session the pages show.
-    fetch('/api/admin/sessions').then((r) => r.json()).then((d) => {
-      if (!d.sessions) return;
-      const box = document.createElement('label');
+    document.body.classList.add('page-' + page);
+    // Session + exam switchers: which academic session and which exam the pages show.
+    const post = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    Promise.all([fetch('/api/admin/sessions').then((r) => r.json()), fetch('/api/admin/exams').then((r) => r.json())]).then(([d, e]) => {
+      if (!d.sessions || !e.exams) return;
+      const box = document.createElement('div');
       box.className = 'sessbox';
-      box.innerHTML = `<span>Session</span><select id="shell-session" aria-label="Academic session">${d.sessions.map((x) => `<option value="${x.id}" ${x.id === d.viewing ? 'selected' : ''}>${x.name}${x.current ? ' (current)' : ''}</option>`).join('')}</select>`;
+      box.innerHTML = `<label><span>Session</span><select id="shell-session" aria-label="Academic session">${d.sessions.map((x) => `<option value="${x.id}" ${x.id === d.viewing ? 'selected' : ''}>${x.name}${x.current ? ' (current)' : ''}</option>`).join('')}</select></label>
+        <label><span>Exam</span><select id="shell-exam" aria-label="Exam">${e.exams.map((x) => `<option value="${x.id}" ${x.id === e.viewing ? 'selected' : ''}>${x.name}${x.live ? ' (live)' : ''}</option>`).join('')}</select></label>`;
       app.querySelector('.nav').before(box);
-      box.querySelector('select').onchange = async (e) => {
-        await fetch('/api/admin/sessions/view', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: Number(e.target.value) }) });
-        location.reload();
-      };
-      if (d.viewing !== d.current) {
-        const name = d.sessions.find((x) => x.id === d.viewing).name;
+      box.querySelector('#shell-session').onchange = async (ev) => { await post('/api/admin/sessions/view', { id: Number(ev.target.value) }); location.reload(); };
+      box.querySelector('#shell-exam').onchange = async (ev) => { await post('/api/admin/exams/view', { id: Number(ev.target.value) }); location.reload(); };
+      const past = d.viewing !== d.current;
+      const notLive = e.viewing !== e.live;
+      if (past || notLive) {
+        const sname = d.sessions.find((x) => x.id === d.viewing).name;
+        const ename = e.exams.find((x) => x.id === e.viewing).name;
         const bar = document.createElement('div');
         bar.className = 'pastbar';
-        bar.textContent = `You are viewing the ${name} session. It is read-only (past session).`;
+        bar.textContent = past
+          ? `You are viewing the ${sname} session (${ename}). It is read-only (past session).`
+          : `You are viewing “${ename}”, which is not the live exam, so it is read-only. Results can still be released or hidden.`;
         content.before(bar);
-        document.body.classList.add('past');
+        document.body.classList.add(past ? 'past' : 'oldexam');
+        document.body.classList.add('oldexam');
       }
     }).catch(() => {});
     document.dispatchEvent(new Event('shell-ready'));

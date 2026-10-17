@@ -1,30 +1,12 @@
 import { Hono } from 'hono';
-import { getCookie, setCookie } from 'hono/cookie';
-import { currentSessionId, requireRole, VIEW_COOKIE, type Env } from './auth';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { currentExamId, currentSessionId, requireRole, VIEW_COOKIE, VIEW_EXAM_COOKIE, type Env } from './auth';
+import { closeOpenAttempts } from './exams';
 import { hashPassword, verifyPassword } from './crypto';
 
-// Admin-only: exam length, other administrators, and your own password. Mounted at /api/admin.
+// Admin-only: other administrators, your own password, and academic sessions. Mounted at /api/admin.
 const settings = new Hono<Env>();
 const admin = requireRole('admin');
-
-export const DEFAULT_EXAM_MINUTES = 120;
-export async function getExamMinutes(db: D1Database) {
-  const row = await db.prepare(`SELECT value FROM settings WHERE key = 'exam_minutes'`).first<{ value: string }>();
-  const n = Number(row?.value);
-  return Number.isInteger(n) && n >= 10 && n <= 360 ? n : DEFAULT_EXAM_MINUTES;
-}
-
-settings.get('/settings', admin, async (c) => c.json({ examMinutes: await getExamMinutes(c.env.DB) }));
-
-settings.put('/settings', admin, async (c) => {
-  const { examMinutes } = await c.req.json<{ examMinutes?: number }>().catch(() => ({}) as { examMinutes?: number });
-  const n = Number(examMinutes);
-  if (!Number.isInteger(n) || n < 10 || n > 360) return c.json({ error: 'Enter a whole number of minutes between 10 and 360.' }, 400);
-  await c.env.DB.prepare(`INSERT INTO settings (key, value) VALUES ('exam_minutes', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
-    .bind(String(n))
-    .run();
-  return c.json({ ok: true, examMinutes: n });
-});
 
 // ---- administrators ----
 
@@ -66,7 +48,7 @@ settings.put('/password', admin, async (c) => {
 });
 
 // ---- academic sessions (2026/2027, 2027/2028, ...) ----
-// Each session has its own students, questions and results. Exam length and admins are shared.
+// Each session has its own students and exams (questions and results belong to an exam). Admins are shared.
 
 function sessionName(x: unknown) {
   const n = String(x ?? '').trim().replace(/\s+/g, ' ');
@@ -81,9 +63,9 @@ settings.get('/sessions', admin, async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT s.id, s.name,
             (SELECT COUNT(*) FROM students WHERE session_id = s.id) AS students,
-            (SELECT COUNT(*) FROM questions WHERE session_id = s.id) AS questions
+            (SELECT COUNT(*) FROM exams WHERE session_id = s.id) AS exams
        FROM sessions s ORDER BY s.id DESC`,
-  ).all<{ id: number; name: string; students: number; questions: number }>();
+  ).all<{ id: number; name: string; students: number; exams: number }>();
   let viewing = Number(getCookie(c, VIEW_COOKIE)) || current;
   if (!results.some((r) => r.id === viewing)) viewing = current;
   return c.json({ sessions: results.map((r) => ({ ...r, current: r.id === current })), current, viewing });
@@ -95,6 +77,7 @@ settings.post('/sessions/view', admin, async (c) => {
   const ok = await c.env.DB.prepare('SELECT 1 AS x FROM sessions WHERE id = ?').bind(Number(id)).first();
   if (!ok) return c.json({ error: 'Session not found.' }, 404);
   setView(c, Number(id));
+  deleteCookie(c, VIEW_EXAM_COOKIE, { path: '/' }); // the exam list is different in another session
   return c.json({ ok: true });
 });
 
@@ -103,7 +86,7 @@ settings.post('/sessions', admin, async (c) => {
   const { name, copyQuestions } = await c.req.json<{ name?: string; copyQuestions?: boolean }>().catch(() => ({}) as { name?: string; copyQuestions?: boolean });
   const n = sessionName(name);
   if (!n) return c.json({ error: 'Enter the session name, for example 2027/2028.' }, 400);
-  const previous = await currentSessionId(c.env.DB);
+  const previousExam = await currentExamId(c.env.DB);
   let id: number;
   try {
     const row = await c.env.DB.prepare('INSERT INTO sessions (name) VALUES (?) RETURNING id').bind(n).first<{ id: number }>();
@@ -111,17 +94,24 @@ settings.post('/sessions', admin, async (c) => {
   } catch {
     return c.json({ error: 'A session with that name already exists.' }, 409);
   }
-  const steps = [c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_session_id'`).bind(String(id))];
+  await closeOpenAttempts(c.env.DB, previousExam, false);
+  // The new session starts with one exam (same length as the last live exam) and it becomes the live one.
+  const steps = [
+    c.env.DB.prepare(`INSERT INTO exams (session_id, name, minutes) SELECT ?, 'Exam 1', minutes FROM exams WHERE id = ?`).bind(id, previousExam),
+    c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_session_id'`).bind(String(id)),
+    c.env.DB.prepare(`UPDATE settings SET value = (SELECT CAST(id AS TEXT) FROM exams WHERE session_id = ?) WHERE key = 'current_exam_id'`).bind(id),
+  ];
   if (copyQuestions) {
     steps.push(
       c.env.DB.prepare(
-        `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id)
-         SELECT subject_id, body, option_a, option_b, option_c, option_d, correct, ? FROM questions WHERE session_id = ? ORDER BY id`,
-      ).bind(id, previous),
+        `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id)
+         SELECT subject_id, body, option_a, option_b, option_c, option_d, correct, ?1, (SELECT id FROM exams WHERE session_id = ?1) FROM questions WHERE exam_id = ?2 ORDER BY id`,
+      ).bind(id, previousExam),
     );
   }
   await c.env.DB.batch(steps);
   setView(c, id);
+  deleteCookie(c, VIEW_EXAM_COOKIE, { path: '/' });
   return c.json({ ok: true, id, name: n }, 201);
 });
 

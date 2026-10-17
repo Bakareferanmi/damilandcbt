@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { requireRole, scope, type Env } from './auth';
+import { liveExamOnly, requireRole, scope, type Env } from './auth';
 
 // Question bank routes. Mounted at /api/admin/questions (admins only).
 // Each subject holds at most 50 questions: the exam shows exactly 50 per subject.
@@ -28,16 +28,16 @@ function check(input: { body?: unknown; a?: unknown; b?: unknown; c?: unknown; d
 }
 
 const questions = new Hono<Env>();
-questions.use('*', requireRole('admin'), scope);
+questions.use('*', requireRole('admin'), scope, liveExamOnly);
 
 // Every subject with how many questions it has (for the "n / 50" progress bars).
 questions.get('/subjects', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT s.id, s.name, COUNT(q.id) AS count
-       FROM subjects s LEFT JOIN questions q ON q.subject_id = s.id AND q.session_id = ?
+       FROM subjects s LEFT JOIN questions q ON q.subject_id = s.id AND q.exam_id = ?
       GROUP BY s.id ORDER BY s.rowid`,
   )
-    .bind(c.get('sessionId'))
+    .bind(c.get('examId'))
     .all();
   return c.json({ subjects: results, max: MAX_PER_SUBJECT });
 });
@@ -48,9 +48,9 @@ questions.get('/', async (c) => {
   if (!subject) return c.json({ error: 'Choose a subject.' }, 400);
   const { results } = await c.env.DB.prepare(
     `SELECT id, subject_id AS subjectId, body, option_a AS a, option_b AS b, option_c AS c, option_d AS d, correct
-       FROM questions WHERE subject_id = ? AND session_id = ? ORDER BY id`,
+       FROM questions WHERE subject_id = ? AND exam_id = ? ORDER BY id`,
   )
-    .bind(subject, c.get('sessionId'))
+    .bind(subject, c.get('examId'))
     .all();
   return c.json({ questions: results });
 });
@@ -67,11 +67,11 @@ questions.post('/', async (c) => {
 
   // The "fewer than 50" test runs inside the INSERT itself, so two admins adding at the same moment cannot pass 50.
   const res = await c.env.DB.prepare(
-    `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id)
-     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
-      WHERE (SELECT COUNT(*) FROM questions WHERE subject_id = ?1 AND session_id = ?8) < ${MAX_PER_SUBJECT}`,
+    `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
+      WHERE (SELECT COUNT(*) FROM questions WHERE subject_id = ?1 AND exam_id = ?9) < ${MAX_PER_SUBJECT}`,
   )
-    .bind(subject.id, r.v.body, r.v.a, r.v.b, r.v.c, r.v.d, r.v.correct, c.get('sessionId'))
+    .bind(subject.id, r.v.body, r.v.a, r.v.b, r.v.c, r.v.d, r.v.correct, c.get('sessionId'), c.get('examId'))
     .run();
   if (!res.meta.changes) return c.json({ error: `${subject.name} already has ${MAX_PER_SUBJECT} questions.` }, 409);
   return c.json({ ok: true, id: res.meta.last_row_id }, 201);
@@ -84,9 +84,9 @@ questions.put('/:id', async (c) => {
   const r = check(input);
   if (!r.ok) return c.json({ error: r.error }, 400);
   const res = await c.env.DB.prepare(
-    'UPDATE questions SET body = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?, correct = ? WHERE id = ? AND session_id = ?',
+    'UPDATE questions SET body = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?, correct = ? WHERE id = ? AND exam_id = ?',
   )
-    .bind(r.v.body, r.v.a, r.v.b, r.v.c, r.v.d, r.v.correct, id, c.get('sessionId'))
+    .bind(r.v.body, r.v.a, r.v.b, r.v.c, r.v.d, r.v.correct, id, c.get('examId'))
     .run();
   return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Question not found.' }, 404);
 });
@@ -96,7 +96,7 @@ questions.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const used = await c.env.DB.prepare('SELECT 1 AS x FROM answers WHERE question_id = ? LIMIT 1').bind(id).first();
   if (used) return c.json({ error: 'A student has already answered this question, so it cannot be deleted.' }, 409);
-  const res = await c.env.DB.prepare('DELETE FROM questions WHERE id = ? AND session_id = ?').bind(id, c.get('sessionId')).run();
+  const res = await c.env.DB.prepare('DELETE FROM questions WHERE id = ? AND exam_id = ?').bind(id, c.get('examId')).run();
   return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Question not found.' }, 404);
 });
 
@@ -111,9 +111,9 @@ questions.post('/import', async (c) => {
   if (rows.length > MAX_IMPORT_ROWS) return c.json({ error: `Upload at most ${MAX_IMPORT_ROWS} questions at a time.` }, 400);
 
   const { results: subjectRows } = await c.env.DB.prepare(
-    `SELECT s.id, s.name, COUNT(q.id) AS count FROM subjects s LEFT JOIN questions q ON q.subject_id = s.id AND q.session_id = ? GROUP BY s.id`,
+    `SELECT s.id, s.name, COUNT(q.id) AS count FROM subjects s LEFT JOIN questions q ON q.subject_id = s.id AND q.exam_id = ? GROUP BY s.id`,
   )
-    .bind(c.get('sessionId'))
+    .bind(c.get('examId'))
     .all<{ id: string; name: string; count: number }>();
   const bySubject = new Map<string, { id: string; name: string; count: number }>();
   for (const s of subjectRows) {
@@ -138,8 +138,8 @@ questions.post('/import', async (c) => {
     const v = checked.v;
     statements.push(
       c.env.DB.prepare(
-        'INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      ).bind(subject.id, v.body, v.a, v.b, v.c, v.d, v.correct, c.get('sessionId')),
+        'INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(subject.id, v.body, v.a, v.b, v.c, v.d, v.correct, c.get('sessionId'), c.get('examId')),
     );
   });
 

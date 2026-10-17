@@ -14,6 +14,7 @@
   h2 { margin:0; font-size:20px; line-height:28px; font-weight:600 }
   p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
   label { font-size:16px; line-height:24px; font-weight:500; display:flex; flex-direction:column; gap:8px }
+  select { height:48px; padding:0 12px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; color:var(--ink); background:#fff; width:100% }
   input { height:48px; padding:0 16px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; color:var(--ink); background:#fff; width:100% }
   form { display:flex; flex-direction:column; gap:16px }
   .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap }
@@ -23,6 +24,11 @@
   .item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap }
   .item:last-child { border-bottom:0 }
   .item span.mail { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; font-weight:500 }
+  .item .info { flex:1; min-width:160px; display:flex; flex-direction:column; gap:2px }
+  .item .info small { font-size:14px; line-height:20px; color:var(--muted) }
+  .item form { flex-direction:row; flex-wrap:wrap; align-items:center; width:100% }
+  .item form input { max-width:200px }
+  .item .ghost.plain { color:var(--brand); border-color:var(--brand) }
   .item .ghost { height:36px; padding:0 12px; font-size:14px; color:var(--bad); border-color:var(--bad) }
 </style>
 </head>
@@ -30,7 +36,7 @@
 <div class="wrap">
   <div class="card">
     <h2>Academic session</h2>
-    <p>Every session has its own students, questions and results, and student numbers start again at 001. Only students of the <b>current</b> session can log in. Old sessions stay saved and can be viewed (read-only) from the Session menu in the sidebar.</p>
+    <p>Every session has its own students and exams, and student numbers start again at 001. Only students of the <b>current</b> session can log in. Old sessions stay saved and can be viewed (read-only) from the Session menu in the sidebar.</p>
     <form id="ren">
       <label>Current session name <span class="unit"><input name="name" maxlength="20" required style="max-width:200px"> <button class="ghost" type="submit">Rename</button></span></label>
       <div id="ren-msg" class="msg" hidden role="status"></div>
@@ -46,15 +52,17 @@
     </form>
   </div>
 
-  <div class="card">
-    <h2>Exam length</h2>
-    <p>How long students have for the whole exam (all four subjects). A change applies to students who start after you save. Anyone already sitting keeps their time.</p>
-    <form id="len">
-      <label>Minutes
-        <span class="unit"><input name="m" type="number" min="10" max="360" step="1" required> <span>minutes (10 to 360)</span></span>
-      </label>
-      <div class="row"><button class="btn" type="submit">Save</button></div>
-      <div id="len-msg" class="msg" hidden role="status"></div>
+  <div class="card" id="exams-card">
+    <h2>Exams in this session</h2>
+    <p>A session can hold several exams (for example First Term, Mock, Second Term). Each exam has its own questions, results and exam length. Students are shared. Only the <b>live</b> exam can be sat: starting a new exam makes it live, and anyone still writing the previous one is submitted and marked.</p>
+    <div class="list" id="exams"></div>
+    <form id="newexam" style="margin-top:8px">
+      <h2 style="font-size:16px;line-height:24px">Start a new exam</h2>
+      <label>Exam name <input name="name" placeholder="e.g. Mock Exam" maxlength="40" autocomplete="off" required style="max-width:320px"></label>
+      <label>Exam length <span class="unit"><input name="m" type="number" min="10" max="360" step="1" value="120" required> <span>minutes (10 to 360)</span></span></label>
+      <label>Questions <select name="copy" id="copysel" style="max-width:320px"><option value="">Start empty (I will add questions)</option></select></label>
+      <div class="row"><button class="btn" type="submit">Start exam</button></div>
+      <div id="new-exam-msg" class="msg" hidden role="status"></div>
     </form>
   </div>
 
@@ -92,8 +100,40 @@ async function api(path, body, method) {
 }
 function say(id, r, okText) { const el = $(id); el.textContent = r.ok ? okText : (r.data.error || 'Something went wrong.'); el.className = 'msg ' + (r.ok ? 'ok' : 'bad'); el.hidden = false; }
 
-async function loadLen() { const r = await api('/api/admin/settings'); if (r.ok) $('len').m.value = r.data.examMinutes; }
-$('len').onsubmit = async (e) => { e.preventDefault(); say('len-msg', await api('/api/admin/settings', { examMinutes: Number($('len').m.value) }, 'PUT'), 'Saved. New exams will use this length.'); };
+let examList = [], editing = null, pastSession = false;
+async function loadExams() {
+  const r = await api('/api/admin/exams'); if (!r.ok) return;
+  examList = r.data.exams;
+  const se = await api('/api/admin/sessions'); pastSession = se.ok && se.data.viewing !== se.data.current;
+  $('newexam').hidden = pastSession;
+  if (!$('newexam').m.dataset.set) { const live = examList.find((x) => x.live); if (live) $('newexam').m.value = live.minutes; $('newexam').m.dataset.set = 1; }
+  $('copysel').innerHTML = '<option value="">Start empty (I will add questions)</option>' + examList.map((x) => `<option value="${x.id}">Copy questions from ${esc(x.name)} (${x.questions})</option>`).join('');
+  $('exams').innerHTML = examList.map((x) => editing === x.id
+    ? `<div class="item"><form data-edit-form="${x.id}"><input name="name" value="${esc(x.name)}" maxlength="40" required aria-label="Exam name"><input name="m" type="number" min="10" max="360" value="${x.minutes}" required aria-label="Minutes" style="max-width:110px"><button class="btn" type="submit" style="height:44px">Save</button><button class="ghost plain" type="button" data-cancel>Cancel</button></form></div>`
+    : `<div class="item"><div class="info"><b>${esc(x.name)}</b><small>${x.minutes} min · ${x.questions} questions · ${x.attempts} ${x.attempts === 1 ? 'student has' : 'students have'} sat it</small></div>${x.live ? '<span class="pill blue">Live</span>' : ''}${pastSession ? '' : `<button class="ghost plain" data-edit-exam="${x.id}">Edit</button>${x.live ? '' : `<button class="ghost plain" data-live="${x.id}" data-name="${esc(x.name)}">Make live</button>`}`}</div>`).join('');
+  document.querySelectorAll('[data-edit-exam]').forEach((b) => b.onclick = () => { editing = Number(b.dataset.editExam); loadExams(); });
+  document.querySelectorAll('[data-cancel]').forEach((b) => b.onclick = () => { editing = null; loadExams(); });
+  document.querySelectorAll('[data-edit-form]').forEach((f) => f.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = await api('/api/admin/exams/' + f.dataset.editForm, { name: f.name.value, minutes: Number(f.m.value) }, 'PUT');
+    if (!d.ok) return alert(d.data.error || 'Could not save.');
+    editing = null; loadExams();
+  });
+  document.querySelectorAll('[data-live]').forEach((b) => b.onclick = async () => {
+    if (!confirm('Make “' + b.dataset.name + '” the live exam? Students will sit this one, and anyone still writing the current exam will be submitted.')) return;
+    const d = await api('/api/admin/exams/' + b.dataset.live + '/make-live', {});
+    if (!d.ok) return alert(d.data.error || 'Could not change.');
+    location.reload();
+  });
+}
+$('newexam').onsubmit = async (e) => {
+  e.preventDefault(); const f = e.target;
+  const live = examList.find((x) => x.live);
+  if (!confirm('Start “' + f.name.value + '”? It becomes the live exam' + (live ? ', and anyone still writing “' + live.name + '” will be submitted.' : '.'))) return;
+  const r = await api('/api/admin/exams', { name: f.name.value, minutes: Number(f.m.value), copyFrom: f.copy.value ? Number(f.copy.value) : null });
+  say('new-exam-msg', r, 'Exam started. It is now the live exam.');
+  if (r.ok) setTimeout(() => location.reload(), 900);
+};
 
 async function loadAdmins() {
   const r = await api('/api/admin/admins'); if (!r.ok) return;
@@ -121,7 +161,7 @@ async function loadSessions() {
   const r = await api('/api/admin/sessions'); if (!r.ok) return;
   curSession = r.data.sessions.find((x) => x.current);
   $('ren').name.value = curSession.name;
-  $('sessions').innerHTML = r.data.sessions.map((x) => `<div class="item"><span class="mail">${esc(x.name)}</span><span class="small" style="font-size:14px;color:var(--muted)">${x.students} students · ${x.questions} questions</span>${x.current ? '<span class="pill blue">Current</span>' : ''}</div>`).join('');
+  $('sessions').innerHTML = r.data.sessions.map((x) => `<div class="item"><span class="mail">${esc(x.name)}</span><span class="small" style="font-size:14px;color:var(--muted)">${x.students} students · ${x.exams} ${x.exams === 1 ? 'exam' : 'exams'}</span>${x.current ? '<span class="pill blue">Current</span>' : ''}</div>`).join('');
 }
 $('ren').onsubmit = async (e) => { e.preventDefault(); const r = await api('/api/admin/sessions/' + curSession.id, { name: e.target.name.value }, 'PUT'); say('ren-msg', r, 'Renamed.'); if (r.ok) { loadSessions(); } };
 $('newsess').onsubmit = async (e) => {
@@ -131,7 +171,7 @@ $('newsess').onsubmit = async (e) => {
   say('new-msg', r, 'New session started. It is now the current session.');
   if (r.ok) setTimeout(() => location.reload(), 900);
 };
-loadSessions(); loadLen(); loadAdmins();
+loadSessions(); loadExams(); loadAdmins();
 </script>
 <script src="/shell.js" data-page="settings" data-title="Settings"></script>
 </body>

@@ -20,28 +20,38 @@ built-in calculator. Scores stay hidden until the admin releases them.
 **Admins** (separate login at `/admin`) can:
 
 - **Overview** – charts of registrations, progress and scores
-- **Monitor** – live view during the exam: who has not started / is writing / has submitted, answers
-  done out of total, and time left (refreshes every 10 s)
+- **Monitor** – live, animated view of the running exam: a pulsing LIVE badge, class progress bar, a
+  card per student with a progress ring and countdown (amber under 5 min, red and pulsing under 1 min),
+  an activity feed (started, halfway, 5 min left, submitted), cards/table views, sorting, and a full-screen
+  mode for a projector. Refreshes every 5 s; confetti when everyone has submitted
 - **Students** – register (first + last name, class), edit, reset password, allow retake, delete
   (only if the student has not started), print login slips
 - **Questions** – add/edit/delete, CSV import (template in `public/questions-template.csv`),
   symbols for maths/science
 - **Results** – release or hide scores (one or all), filter by class, download CSV,
   **print a result slip per student or all slips in bulk** (one A4 page each, respects the class filter)
-- **Settings** – exam length, academic sessions, add/remove admins, change own password
+- **Settings** – exams of the session (name, length, make live), academic sessions, add/remove admins, change own password
+
+### Exams inside a session
+A session can hold several exams (First Term, Mock, Second Term…). **Students belong to the session;
+questions, results and exam length belong to the exam.** Only one exam is **live** at a time, and it is the
+one students sit. Create one in **Settings → Exams in this session → Start a new exam** (optionally copy the
+questions of another exam). Starting a new exam makes it live, and anyone still writing the previous
+exam is submitted and marked. Older exams stay viewable (read-only, results can still be released/hidden)
+from the **Exam** menu in the sidebar, and **Make live** switches back to one. Students can sit each exam once.
 
 ### Academic sessions
-Each session (e.g. `2026/2027`) has its own students, questions and results. Student codes restart at
+Each session (e.g. `2026/2027`) has its own students and exams. Student codes restart at
 `001` in each session. Only the **current** session can log in; older sessions are read-only (except
 releasing results). Start a new year in **Settings → Academic sessions → New session** (you can copy
-the question bank across).
+the live exam's questions across). The new session starts with one exam, "Exam 1" (rename it in Settings).
 
 ## Project layout
 
 ```
 public/        pages (login, admin console, exam, monitor, results…) + app.css, shell.js, format.js
-src/           Worker API (Hono): index.ts, auth.ts, exam.ts, questions.ts, results.ts, settings.ts, limits.ts, crypto.ts
-migrations/    0001–0006 D1 migrations (run in order)
+src/           Worker API (Hono): index.ts, auth.ts, exam.ts, exams.ts, questions.ts, results.ts, settings.ts, limits.ts, crypto.ts
+migrations/    0001–0007 D1 migrations (run in order)
 scripts/       make-admin.mjs  (create / reset an admin)
 wrangler.jsonc Cloudflare config
 ```
@@ -77,7 +87,8 @@ npx wrangler secret put JWT_SECRET                                 # long random
 node scripts/make-admin.mjs --remote you@example.com "a-strong-password"
 ```
 
-Step 10 (monitor + result slips) needs **no new migration**.
+Migration `0007_exams.sql` (exams inside sessions) rebuilds the attempts table. It keeps all existing
+data (each session's existing questions and results become "Exam 1"), but **take the backup above first**.
 
 ### Custom domain (later)
 When the domain is bought: Cloudflare dashboard → Workers & Pages → damiland-cbt → Settings →

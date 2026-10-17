@@ -114,7 +114,7 @@
   <div class="bar"><div class="in"><img src="/logo.png" alt=""><div class="who"><b class="nm"></b><span class="cl"></span></div><button class="ghost" data-logout>Log out</button></div></div>
   <div class="page narrow">
     <div class="card">
-      <h1>Choose your subject group</h1>
+      <h1 id="start-title">Choose your subject group</h1>
       <p>Use of English is compulsory for everyone. Pick the group you registered for.</p>
       <div class="groups" id="groups"></div>
     </div>
@@ -170,7 +170,7 @@
   <div class="bar"><div class="in"><img src="/logo.png" alt=""><div class="who"><b class="nm"></b><span class="cl"></span></div><button class="ghost" data-logout>Log out</button></div></div>
   <div class="page narrow">
     <div class="card">
-      <h1>Exam submitted</h1>
+      <h1 id="done-title">Exam submitted</h1>
       <p id="done-text">Well done. Your answers have been saved.</p>
       <div id="scores" style="display:flex;flex-direction:column;gap:12px"></div>
     </div>
@@ -213,6 +213,7 @@ async function boot() {
 /* ---------- start ---------- */
 function showStart() {
   view('start');
+  if (data.examName) $('start-title').textContent = data.examName + ': choose your subject group';
   $('groups').innerHTML = data.groups.map((g) => `
     <button type="button" class="group" data-no="${g.no}" aria-pressed="false">
       <b>Group ${g.no}</b><span>${g.subjects.join(', ')}</span>
@@ -344,6 +345,7 @@ async function finish() {
 }
 function showDone() {
   view('done');
+  if (data.examName) $('done-title').textContent = data.examName + ' submitted';
   if (!data.released) {
     $('done-text').textContent = 'Well done. Your answers have been saved. Your scores will be available once your school releases the results. Check back later.';
     $('scores').innerHTML = '';

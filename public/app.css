@@ -62,7 +62,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 /* session switcher + past-session notice */
-.sessbox { display:flex; flex-direction:column; gap:4px; padding:0 8px; font-size:12px; line-height:16px; font-weight:600; color:var(--muted) }
+.sessbox { display:flex; flex-direction:column; gap:12px; padding:0 8px }
+.sessbox label { display:flex; flex-direction:column; gap:4px; font-size:12px; line-height:16px; font-weight:600; color:var(--muted) }
 .sessbox select { height:44px; padding:0 12px; border:2px solid var(--line); border-radius:12px; font:500 16px 'Poppins',sans-serif; background:#fff; color:var(--ink) }
 .pastbar { margin:16px 24px 0; padding:12px 16px; border-radius:12px; background:#FFF3D6; color:#6B4200; font-size:16px; line-height:24px; font-weight:500; max-width:1120px }
 @media (min-width:1200px) { .pastbar { margin-left:auto; margin-right:auto; width:calc(100% - 48px) } }
@@ -70,3 +71,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* past sessions are read-only: hide the buttons that would change anything */
 body.past #reg, body.past [data-edit], body.past [data-reset], body.past [data-retake], body.past [data-delete],
 body.past #form-card, body.past #import-card, body.past #list [data-del] { display:none !important }
+/* an exam that is not the live one is read-only too (questions, retakes) */
+body.oldexam [data-retake], body.oldexam #form-card, body.oldexam #import-card,
+body.oldexam.page-questions [data-edit], body.oldexam.page-questions [data-del] { display:none !important }

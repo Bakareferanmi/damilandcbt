@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
-import { COOKIE, currentSessionId, readSession, requireRole, scope, startSession, type Env } from './auth';
+import { COOKIE, currentSessionId, liveExamOnly, readSession, requireRole, scope, startSession, type Env } from './auth';
 import { hashPassword, randomPassword, verifyPassword } from './crypto';
 import { clearFails, lockedMinutes, lockMessage, recordFail } from './limits';
 import exam from './exam';
+import exams from './exams';
 import questions from './questions';
 import results from './results';
 import settings from './settings';
@@ -120,9 +121,9 @@ app.get('/api/admin/students', requireRole('admin'), scope, async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT s.code, s.full_name AS fullName, s.class_name AS className,
             CASE WHEN a.id IS NULL THEN 'none' WHEN a.submitted_at IS NULL THEN 'in_progress' ELSE 'submitted' END AS status
-       FROM students s LEFT JOIN attempts a ON a.student_id = s.id WHERE s.session_id = ? ORDER BY s.seq ASC`,
+       FROM students s LEFT JOIN attempts a ON a.student_id = s.id AND a.exam_id = ? WHERE s.session_id = ? ORDER BY s.seq ASC`,
   )
-    .bind(c.get('sessionId'))
+    .bind(c.get('examId'), c.get('sessionId'))
     .all();
   return c.json({ students: results });
 });
@@ -149,11 +150,11 @@ app.post('/api/admin/students/:code/reset-password', requireRole('admin'), scope
 });
 
 // Lets a student sit again: erases their attempt (answers and score) so they can start fresh.
-app.post('/api/admin/students/:code/retake', requireRole('admin'), scope, async (c) => {
-  const row = await c.env.DB.prepare('SELECT a.id AS attemptId FROM students s JOIN attempts a ON a.student_id = s.id WHERE s.code = ? AND s.session_id = ?')
-    .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
+app.post('/api/admin/students/:code/retake', requireRole('admin'), scope, liveExamOnly, async (c) => {
+  const row = await c.env.DB.prepare('SELECT a.id AS attemptId FROM students s JOIN attempts a ON a.student_id = s.id AND a.exam_id = ? WHERE s.code = ? AND s.session_id = ?')
+    .bind(c.get('examId'), (c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
     .first<{ attemptId: number }>();
-  if (!row) return c.json({ error: 'This student has not started the exam.' }, 404);
+  if (!row) return c.json({ error: 'This student has not started this exam.' }, 404);
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM scores WHERE attempt_id = ?').bind(row.attemptId),
     c.env.DB.prepare('DELETE FROM answers WHERE attempt_id = ?').bind(row.attemptId),
@@ -210,6 +211,10 @@ app.route('/api/admin/questions', questions);
 // ---------- admin: results ----------
 
 app.route('/api/admin/results', results);
+
+// ---------- admin: exams inside a session ----------
+
+app.route('/api/admin/exams', exams);
 
 // ---------- admin: settings, other admins, own password ----------
 
