@@ -24,6 +24,8 @@
   th, td { text-align:left; padding:12px; border-bottom:1px solid var(--line); white-space:nowrap }
   th { font-size:14px; line-height:20px; color:var(--muted); font-weight:600 }
   td .ghost { height:36px; padding:0 12px; font-size:14px }
+  .ghost.danger { color:var(--bad); border-color:var(--bad) }
+  .ghost.danger:hover { background:#FDECEA }
   dialog { border:0; border-radius:16px; padding:24px; max-width:440px; width:calc(100% - 32px) }
   dialog::backdrop { background:rgba(11,18,48,.5) }
   dialog form { display:flex; flex-direction:column; gap:16px }
@@ -101,10 +103,12 @@ function draw() {
   $('rows').innerHTML = list.length ? list.map((s) => `<tr>
     <td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td>
     <td><span class="pill ${STATUS[s.status][1]}">${STATUS[s.status][0]}</span></td>
-    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button><button class="ghost" data-reset="${esc(s.code)}">Reset password</button></div></td></tr>`).join('')
+    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button><button class="ghost" data-reset="${esc(s.code)}">Reset password</button>${s.status === 'none' ? `<button class="ghost danger" data-delete="${esc(s.code)}">Delete</button>` : `<button class="ghost danger" data-retake="${esc(s.code)}">Allow retake</button>`}</div></td></tr>`).join('')
     : '<tr><td colspan="5">No students found.</td></tr>';
   document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => openEdit(b.dataset.edit));
   document.querySelectorAll('[data-reset]').forEach((b) => b.onclick = () => resetPw(b.dataset.reset));
+  document.querySelectorAll('[data-retake]').forEach((b) => b.onclick = () => retake(b.dataset.retake));
+  document.querySelectorAll('[data-delete]').forEach((b) => b.onclick = () => remove(b.dataset.delete));
 }
 $('q').oninput = draw; $('cls').onchange = draw;
 
@@ -116,7 +120,11 @@ function showSlip(name, cls, code, password) {
   $('slipd').showModal();
 }
 $('slip-close').onclick = () => $('slipd').close();
-$('print').onclick = () => window.print();
+$('print').onclick = () => {
+  document.body.classList.add('slip-print');
+  window.addEventListener('afterprint', () => document.body.classList.remove('slip-print'), { once: true });
+  window.print();
+};
 
 $('reg').onsubmit = async (e) => {
   e.preventDefault();
@@ -126,6 +134,20 @@ $('reg').onsubmit = async (e) => {
   if (!r.ok) { $('reg-msg').textContent = r.data.error || 'Could not register.'; return; }
   e.target.reset(); showSlip(r.data.fullName, r.data.className, r.data.code, r.data.password); load();
 };
+async function retake(code) {
+  const s = students.find((x) => x.code === code);
+  if (!confirm(`Allow ${s.fullName} to sit the exam again?\n\nTheir current answers and score will be erased and cannot be recovered.`)) return;
+  const r = await api(`/api/admin/students/${code}/retake`, {});
+  if (!r.ok) return alert(r.data.error || 'Could not reset the exam.');
+  load();
+}
+async function remove(code) {
+  const s = students.find((x) => x.code === code);
+  if (!confirm(`Delete ${s.fullName} (${code})? This cannot be undone.`)) return;
+  const r = await api(`/api/admin/students/${code}`, null, 'DELETE');
+  if (!r.ok) return alert(r.data.error || 'Could not delete.');
+  load();
+}
 async function resetPw(code) {
   const s = students.find((x) => x.code === code);
   if (!confirm(`Give ${s.fullName} a new password? The old one will stop working.`)) return;

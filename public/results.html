@@ -31,7 +31,35 @@
   .pill { display:inline-block; padding:2px 12px; border-radius:12px; font-size:14px; line-height:20px; font-weight:600 }
   .pill.on { background:#DDF3E8; color:var(--ok) }
   .pill.off { background:#EEF0F6; color:var(--muted) }
+  td .ghost { height:36px; padding:0 12px; font-size:14px }
   [hidden] { display:none !important }
+  /* ---- printable result slips (hidden on screen) ---- */
+  #slips { display:none }
+  .rs { font-family:'Poppins',system-ui,sans-serif; color:#000; padding:8mm 4mm; display:flex; flex-direction:column; gap:20px }
+  .rs .head { display:flex; align-items:center; gap:16px; padding-bottom:16px; border-bottom:3px solid #01309F }
+  .rs .head img { width:64px; height:64px; object-fit:contain }
+  .rs .head b { display:block; font-size:24px; line-height:32px; color:#01309F }
+  .rs .head span { font-size:14px; color:#333 }
+  .rs .head .ses { margin-left:auto; text-align:right; font-weight:600; font-size:16px }
+  .rs h2 { margin:0; font-size:20px; text-align:center; letter-spacing:.06em; text-transform:uppercase }
+  .rs dl { display:grid; grid-template-columns:160px 1fr; gap:8px 16px; margin:0; font-size:16px }
+  .rs dt { color:#555 } .rs dd { margin:0; font-weight:600 }
+  .rs table { width:100%; border-collapse:collapse; font-size:16px }
+  .rs th, .rs td { border:1px solid #444; padding:10px 12px; text-align:left }
+  .rs th { background:#E8EEFC; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+  .rs td.n, .rs th.n { text-align:right }
+  .rs tr.tot td { font-weight:700; background:#F4F6FC; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+  .rs .sign { display:flex; justify-content:space-between; gap:32px; margin-top:48px; font-size:14px }
+  .rs .sign div { flex:1; border-top:1px solid #000; padding-top:8px; text-align:center }
+  .rs .foot { margin-top:auto; font-size:12px; color:#555; text-align:center }
+  @page { size:A4; margin:14mm }
+  @media print {
+    body.printing .app, body.printing .pastbar, body.printing .scrim { display:none !important }
+    body.printing { background:#fff }
+    body.printing #slips { display:block }
+    .rs { min-height:255mm; page-break-after:always; break-after:page }
+    .rs:last-child { page-break-after:auto; break-after:auto }
+  }
 </style>
 </head>
 <body>
@@ -44,6 +72,7 @@
       <button class="primary" id="rel-all">Release all</button>
       <button class="ghost" id="hide-all">Hide all</button>
       <button class="ghost" id="dl">Download results (CSV)</button>
+      <button class="ghost" id="print-all">Print all slips</button>
       <span id="count" style="margin-left:auto;color:var(--muted)"></span>
     </div>
     <div class="scroll"><table>
@@ -74,11 +103,46 @@ function draw() {
     <td>${x.scores.map((s) => esc(s.subject) + ' ' + s.score + '/' + s.total).join(' · ')}</td>
     <td><b>${x.total}/${x.outOf}</b></td>
     <td><span class="pill ${x.released ? 'on' : 'off'}">${x.released ? 'Released' : 'Hidden'}</span></td>
-    <td><button class="ghost" data-code="${esc(x.code)}" data-to="${!x.released}">${x.released ? 'Hide' : 'Release'}</button></td></tr>`).join('')
+    <td><div class="row"><button class="ghost" data-code="${esc(x.code)}" data-to="${!x.released}">${x.released ? 'Hide' : 'Release'}</button><button class="ghost" data-slip="${esc(x.code)}">Print slip</button></div></td></tr>`).join('')
     : '<tr><td colspan="8">No one has submitted yet.</td></tr>';
+  document.querySelectorAll('[data-slip]').forEach((b) => b.onclick = () => printSlips(all.filter((x) => x.code === b.dataset.slip)));
   document.querySelectorAll('[data-code]').forEach((b) => b.onclick = async () => { await api('/api/admin/results/release', { code: b.dataset.code, released: b.dataset.to === 'true' }); load(); });
 }
 $('cls').onchange = draw;
+
+// ---------- printable result slips (one per student, one per page) ----------
+let sessionName = '';
+fetch('/api/admin/sessions').then((r) => r.json()).then((d) => { const v = (d.sessions || []).find((x) => x.id === d.viewing); if (v) sessionName = v.name; }).catch(() => {});
+function slipHtml(x) {
+  const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 + '%' : '–';
+  const date = x.submittedAt ? new Date(x.submittedAt.replace(' ', 'T') + 'Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  return `<section class="rs">
+    <div class="head"><img src="/logo.png" alt=""><div><b>Damiland CBT</b><span>Computer-Based Test</span></div><div class="ses">Session ${esc(sessionName)}</div></div>
+    <h2>Examination result slip</h2>
+    <dl><dt>Name</dt><dd>${esc(x.fullName)}</dd><dt>Student code</dt><dd>${esc(x.code)}</dd><dt>Class</dt><dd>${esc(x.className)}</dd><dt>Subject group</dt><dd>Group ${x.groupNo}</dd>${date ? `<dt>Date of exam</dt><dd>${esc(date)}</dd>` : ''}</dl>
+    <table><thead><tr><th>Subject</th><th class="n">Score</th><th class="n">Out of</th><th class="n">Percent</th></tr></thead><tbody>
+      ${x.scores.map((s) => `<tr><td>${esc(s.subject)}</td><td class="n">${s.score}</td><td class="n">${s.total}</td><td class="n">${pct(s.score, s.total)}</td></tr>`).join('')}
+      <tr class="tot"><td>Total</td><td class="n">${x.total}</td><td class="n">${x.outOf}</td><td class="n">${pct(x.total, x.outOf)}</td></tr>
+    </tbody></table>
+    <div class="sign"><div>Exam officer</div><div>Principal</div></div>
+    <div class="foot">Printed on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+  </section>`;
+}
+function printSlips(list) {
+  if (!list.length) return alert('There are no submitted results to print.');
+  const box = document.createElement('div');
+  box.id = 'slips'; box.innerHTML = list.map(slipHtml).join('');
+  document.body.appendChild(box);
+  document.body.classList.add('printing');
+  window.addEventListener('afterprint', () => { document.body.classList.remove('printing'); box.remove(); }, { once: true });
+  setTimeout(() => window.print(), 100);
+}
+$('print-all').onclick = () => {
+  const cls = $('cls').value;
+  const list = all.filter((x) => !cls || x.className === cls);
+  if (list.length > 1 && !confirm(`Print ${list.length} result slips (one page each)${cls ? ' for ' + cls : ''}?`)) return;
+  printSlips(list);
+};
 // Download what is on screen (respects the class filter) as a CSV that opens in Excel / Google Sheets.
 $('dl').onclick = () => {
   const cls = $('cls').value;

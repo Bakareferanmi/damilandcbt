@@ -8,6 +8,7 @@ html { -webkit-text-size-adjust:100% }
 /* ---------- admin shell (sidebar + page) ---------- */
 body.shell { padding:0; display:block; min-height:100vh }
 .app { display:grid; grid-template-columns:256px 1fr; min-height:100vh }
+.app > * { min-width:0 }
 .side { background:#fff; border-right:1px solid var(--line); padding:24px 16px; display:flex; flex-direction:column; gap:24px; position:sticky; top:0; height:100vh }
 .brand { display:flex; align-items:center; gap:12px; padding:0 8px }
 .brand img { width:40px; height:40px; object-fit:contain }
@@ -55,9 +56,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .slip .k { font-size:14px; line-height:20px; color:var(--muted) }
 .slip .v { font-size:20px; line-height:28px; font-weight:700; letter-spacing:.04em; color:var(--brand) }
 @media print {
-  body * { visibility:hidden }
-  .slip, .slip * { visibility:visible }
-  .slip { position:absolute; left:0; top:0; width:100%; border:2px solid #000 }
+  body.slip-print * { visibility:hidden }
+  body.slip-print .slip, body.slip-print .slip * { visibility:visible }
+  body.slip-print .slip { position:absolute; left:0; top:0; width:100%; border:2px solid #000 }
 }
 
 /* session switcher + past-session notice */
@@ -67,5 +68,5 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (min-width:1200px) { .pastbar { margin-left:auto; margin-right:auto; width:calc(100% - 48px) } }
 
 /* past sessions are read-only: hide the buttons that would change anything */
-body.past #reg, body.past [data-edit], body.past [data-reset],
+body.past #reg, body.past [data-edit], body.past [data-reset], body.past [data-retake], body.past [data-delete],
 body.past #form-card, body.past #import-card, body.past #list [data-del] { display:none !important }

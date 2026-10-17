@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<script src="/format.js"></script>
 <style>
   :root { --brand:#01309F; --brand-dark:#002580; --tint:#E8EEFC; --ink:#0B1230; --muted:#4A5470; --line:#CBD3E8; --bg:#F4F6FC; --ok:#0B5C38; --bad:#8C1D18; }
   * { box-sizing:border-box }
@@ -46,6 +47,12 @@
   .opts { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:4px 16px; font-size:16px; line-height:24px }
   @media (max-width:640px){ .opts { grid-template-columns:1fr } }
   .opts .right { color:var(--ok); font-weight:600 }
+  .sym { display:flex; flex-wrap:wrap; gap:8px; align-items:center }
+  .sym button { min-width:40px; height:40px; border:2px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); font:500 16px 'Poppins',sans-serif; cursor:pointer }
+  .sym button:hover { border-color:var(--brand); color:var(--brand) }
+  .preview { border:2px dashed var(--line); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:8px; font-size:16px; line-height:28px }
+  #pv-opts { display:grid; grid-template-columns:1fr 1fr; gap:4px 16px }
+  @media (max-width:640px){ #pv-opts { grid-template-columns:1fr } }
   [hidden] { display:none !important }
   ul.skips { margin:8px 0 0; padding-left:20px; font-size:14px; line-height:20px }
 </style>
@@ -64,12 +71,25 @@
     <h2 id="form-title">Add a question</h2>
     <form id="qform" class="row" style="flex-direction:column;align-items:stretch;gap:16px">
       <label>Question <textarea name="body" required></textarea></label>
+      <div class="sym" id="sym" aria-label="Symbols">
+        <span class="small">Insert:</span>
+        <button type="button" data-ins="^()">x²</button><button type="button" data-ins="_()">x₂</button>
+        <button type="button" data-ins="frac(,)">a/b</button><button type="button" data-ins="sqrt()">√</button>
+        <button type="button" data-ins="π">π</button><button type="button" data-ins="θ">θ</button><button type="button" data-ins="Δ">Δ</button>
+        <button type="button" data-ins="°">°</button><button type="button" data-ins="×">×</button><button type="button" data-ins="÷">÷</button>
+        <button type="button" data-ins="±">±</button><button type="button" data-ins="≤">≤</button><button type="button" data-ins="≥">≥</button>
+        <button type="button" data-ins="≠">≠</button><button type="button" data-ins="≈">≈</button><button type="button" data-ins="→">→</button>
+        <button type="button" data-ins="⇌">⇌</button><button type="button" data-ins="μ">μ</button><button type="button" data-ins="λ">λ</button>
+        <button type="button" data-ins="Ω">Ω</button><button type="button" data-ins="α">α</button><button type="button" data-ins="β">β</button>
+      </div>
+      <p class="small">Tips: type <b>x^2</b> for x², <b>H_2O</b> for H₂O, <b>frac(1,2)</b> for a fraction, <b>sqrt(x)</b> for a square root, <b>x^(n+1)</b> for longer powers. Click a symbol to add it where your cursor is.</p>
       <div class="grid2">
         <label>Option A <input name="a" required autocomplete="off"></label>
         <label>Option B <input name="b" required autocomplete="off"></label>
         <label>Option C <input name="c" required autocomplete="off"></label>
         <label>Option D <input name="d" required autocomplete="off"></label>
       </div>
+      <div class="preview" id="preview" hidden><div class="small">How students will see it</div><div id="pv-body"></div><div id="pv-opts"></div></div>
       <label style="max-width:240px">Correct answer
         <select name="correct" required>
           <option value="">Select</option><option>A</option><option>B</option><option>C</option><option>D</option>
@@ -144,8 +164,8 @@ async function loadList() {
   $('list-title').textContent = `${name}: ${loaded.length} of ${max} questions`;
   $('list').innerHTML = loaded.length ? loaded.map((q, i) => `
     <div class="q">
-      <div><b>${i + 1}.</b> ${esc(q.body)}</div>
-      <ul class="opts">${['a','b','c','d'].map((k) => `<li class="${q.correct === k.toUpperCase() ? 'right' : ''}">${k.toUpperCase()}. ${esc(q[k])}${q.correct === k.toUpperCase() ? ' ✓' : ''}</li>`).join('')}</ul>
+      <div><b>${i + 1}.</b> ${fmt(q.body)}</div>
+      <ul class="opts">${['a','b','c','d'].map((k) => `<li class="${q.correct === k.toUpperCase() ? 'right' : ''}">${k.toUpperCase()}. ${fmt(q[k])}${q.correct === k.toUpperCase() ? ' ✓' : ''}</li>`).join('')}</ul>
       <div class="row">
         <button class="ghost" type="button" data-edit="${q.id}">Edit</button>
         <button class="ghost danger" type="button" data-del="${q.id}">Delete</button>
@@ -155,8 +175,31 @@ async function loadList() {
   document.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => del(Number(b.dataset.del)));
 }
 
+// Symbol buttons insert at the cursor of the last field you clicked in.
+let lastField = null;
+$('qform').addEventListener('focusin', (e) => { if (e.target.matches('textarea, input')) lastField = e.target; });
+$('sym').addEventListener('mousedown', (e) => e.preventDefault()); // keep the cursor in the field
+$('sym').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ins]'); if (!b) return;
+  const el = lastField || $('qform').body;
+  const t = b.dataset.ins, a = el.selectionStart ?? el.value.length, z = el.selectionEnd ?? a;
+  el.value = el.value.slice(0, a) + t + el.value.slice(z);
+  // place the cursor inside the brackets / after the symbol
+  const inside = t.indexOf('(') >= 0 ? a + t.indexOf('(') + 1 : a + t.length;
+  el.focus(); el.setSelectionRange(inside, inside);
+  preview();
+});
+function preview() {
+  const f = $('qform');
+  const any = f.body.value || f.a.value || f.b.value || f.c.value || f.d.value;
+  $('preview').hidden = !any;
+  $('pv-body').innerHTML = fmt(f.body.value);
+  $('pv-opts').innerHTML = ['a', 'b', 'c', 'd'].map((k) => `<span><b>${k.toUpperCase()}.</b> ${fmt(f[k].value)}</span>`).join('');
+}
+$('qform').addEventListener('input', preview);
+
 function resetForm() {
-  $('qform').reset(); editing = null;
+  $('qform').reset(); editing = null; $('preview').hidden = true;
   $('form-title').textContent = 'Add a question';
   $('cancel-edit').hidden = true; note($('form-msg'), '', 'ok');
 }
@@ -167,6 +210,7 @@ function startEdit(id) {
   f.body.value = q.body; f.a.value = q.a; f.b.value = q.b; f.c.value = q.c; f.d.value = q.d; f.correct.value = q.correct;
   $('form-title').textContent = 'Edit question';
   $('cancel-edit').hidden = false;
+  preview();
   $('form-card').scrollIntoView({ behavior: 'smooth' });
 }
 $('cancel-edit').onclick = resetForm;

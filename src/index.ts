@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
 import { COOKIE, currentSessionId, readSession, requireRole, scope, startSession, type Env } from './auth';
 import { hashPassword, randomPassword, verifyPassword } from './crypto';
+import { clearFails, lockedMinutes, lockMessage, recordFail } from './limits';
 import exam from './exam';
 import questions from './questions';
 import results from './results';
@@ -52,13 +53,19 @@ app.post('/api/admin/login', async (c) => {
   const { email, password } = await c.req.json<{ email?: string; password?: string }>().catch(() => ({}) as any);
   if (!email || !password) return c.json({ error: 'Enter your email address and password.' }, 400);
 
+  const key = 'a:' + email.trim().toLowerCase();
+  const wait = await lockedMinutes(c.env.DB, key);
+  if (wait) return c.json({ error: lockMessage(wait) }, 429);
+
   const admin = await c.env.DB.prepare('SELECT id, email, password_hash FROM admins WHERE email = ?')
     .bind(email.trim().toLowerCase())
     .first<{ id: number; email: string; password_hash: string }>();
 
   if (!admin || !(await verifyPassword(password, admin.password_hash))) {
+    await recordFail(c.env.DB, key);
     return c.json({ error: 'Email or password is not correct.' }, 401);
   }
+  await clearFails(c.env.DB, key);
   await startSession(c, 'admin', admin.id);
   return c.json({ ok: true, role: 'admin', email: admin.email });
 });
@@ -67,6 +74,10 @@ app.post('/api/student/login', async (c) => {
   const { code, password } = await c.req.json<{ code?: string; password?: string }>().catch(() => ({}) as any);
   if (!code || !password) return c.json({ error: 'Enter your student code and password.' }, 400);
 
+  const key = 's:' + code.trim().toUpperCase();
+  const wait = await lockedMinutes(c.env.DB, key);
+  if (wait) return c.json({ error: lockMessage(wait) }, 429);
+
   const student = await c.env.DB.prepare(
     'SELECT id, code, full_name, class_name, password_hash FROM students WHERE code = ? AND session_id = ?',
   )
@@ -74,8 +85,10 @@ app.post('/api/student/login', async (c) => {
     .first<{ id: number; code: string; full_name: string; class_name: string; password_hash: string }>();
 
   if (!student || !(await verifyPassword(password.trim().toUpperCase(), student.password_hash))) {
+    await recordFail(c.env.DB, key);
     return c.json({ error: 'Student code or password is not correct.' }, 401);
   }
+  await clearFails(c.env.DB, key);
   await startSession(c, 'student', student.id);
   return c.json({ ok: true, role: 'student', name: student.full_name, code: student.code, className: student.class_name });
 });
@@ -133,6 +146,31 @@ app.post('/api/admin/students/:code/reset-password', requireRole('admin'), scope
     .bind(await hashPassword(password), (c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
     .run();
   return res.meta.changes ? c.json({ ok: true, password }) : c.json({ error: 'Student not found.' }, 404);
+});
+
+// Lets a student sit again: erases their attempt (answers and score) so they can start fresh.
+app.post('/api/admin/students/:code/retake', requireRole('admin'), scope, async (c) => {
+  const row = await c.env.DB.prepare('SELECT a.id AS attemptId FROM students s JOIN attempts a ON a.student_id = s.id WHERE s.code = ? AND s.session_id = ?')
+    .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
+    .first<{ attemptId: number }>();
+  if (!row) return c.json({ error: 'This student has not started the exam.' }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM scores WHERE attempt_id = ?').bind(row.attemptId),
+    c.env.DB.prepare('DELETE FROM answers WHERE attempt_id = ?').bind(row.attemptId),
+    c.env.DB.prepare('DELETE FROM attempts WHERE id = ?').bind(row.attemptId),
+  ]);
+  return c.json({ ok: true });
+});
+
+// Deletes a student who has not started the exam (for registration mistakes).
+app.delete('/api/admin/students/:code', requireRole('admin'), scope, async (c) => {
+  const res = await c.env.DB.prepare(
+    'DELETE FROM students WHERE code = ? AND session_id = ? AND NOT EXISTS (SELECT 1 FROM attempts WHERE student_id = students.id)',
+  )
+    .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
+    .run();
+  if (res.meta.changes) return c.json({ ok: true });
+  return c.json({ error: 'This student has started the exam, so they cannot be deleted. Use “Allow retake” first if you need to reset them.' }, 409);
 });
 
 app.post('/api/admin/students', requireRole('admin'), scope, async (c) => {

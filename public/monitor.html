@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor · Damiland CBT</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+  body { margin:0; font-family:'Poppins',system-ui,sans-serif; background:var(--bg); color:var(--ink) }
+  .wrap { display:flex; flex-direction:column; gap:24px }
+  h2 { margin:0; font-size:20px; line-height:28px; font-weight:600 }
+  p { margin:0; font-size:16px; line-height:24px; color:var(--muted) }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px }
+  .tile { background:#fff; border:2px solid var(--line); border-radius:16px; padding:16px 24px; display:flex; flex-direction:column; gap:4px; cursor:pointer; text-align:left; font-family:inherit; color:inherit }
+  .tile[aria-pressed="true"] { border-color:var(--brand); background:var(--tint) }
+  .tile b { font-size:32px; line-height:40px; font-weight:700; color:var(--brand) }
+  .tile span { font-size:14px; line-height:20px; color:var(--muted); font-weight:500 }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+  input, select { height:44px; padding:0 12px; border:2px solid #7480A3; border-radius:12px; font:400 16px 'Poppins',sans-serif; background:#fff; color:var(--ink) }
+  .scroll { overflow-x:auto }
+  table { width:100%; border-collapse:collapse; font-size:16px; line-height:24px }
+  th, td { text-align:left; padding:12px; border-bottom:1px solid var(--line); white-space:nowrap }
+  th { font-size:14px; line-height:20px; color:var(--muted); font-weight:600 }
+  .prog { display:flex; align-items:center; gap:12px; min-width:200px }
+  .bar { flex:1; height:8px; border-radius:4px; background:var(--grid); overflow:hidden }
+  .bar i { display:block; height:100%; background:var(--brand) }
+  .bar.done i { background:var(--ok) }
+  .time { font-variant-numeric:tabular-nums; font-weight:600 }
+  .time.low { color:var(--bad) }
+  .live { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--muted) }
+  .live::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--ok) }
+  .live.off::before { background:#9AA3BD }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tiles" id="tiles"></div>
+  <div class="card">
+    <div class="row">
+      <h2 style="flex:1">Students <span id="count" class="pill blue"></span></h2>
+      <input id="q" placeholder="Search name or code" aria-label="Search" style="max-width:240px">
+      <select id="cls" aria-label="Class"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
+      <span class="live" id="live">Updating every 10 seconds</span>
+      <button class="ghost" id="pause">Pause</button>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Code</th><th>Name</th><th>Class</th><th>Group</th><th>Status</th><th>Answered</th><th>Time left</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+let students = [], filter = 'all', paused = false, fetchedAt = 0;
+const LABEL = { none: ['Not started', ''], in_progress: ['In progress', 'blue'], submitted: ['Submitted', 'on'] };
+const mmss = (s) => { const h = Math.floor(s / 3600), m = String(Math.floor(s % 3600 / 60)).padStart(2, '0'), x = String(s % 60).padStart(2, '0'); return (h ? h + ':' : '') + m + ':' + x; };
+
+async function load() {
+  try {
+    const r = await fetch('/api/admin/results/monitor');
+    if (!r.ok) return;
+    students = (await r.json()).students; fetchedAt = Date.now(); draw();
+  } catch {}
+}
+function draw() {
+  const cls = $('cls').value, q = $('q').value.trim().toLowerCase();
+  const base = students.filter((s) => (!cls || s.className === cls) && (!q || s.fullName.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)));
+  const n = (st) => base.filter((s) => s.status === st).length;
+  $('tiles').innerHTML = [['all', base.length, 'Registered'], ['none', n('none'), 'Not started'], ['in_progress', n('in_progress'), 'In progress'], ['submitted', n('submitted'), 'Submitted']]
+    .map(([k, v, l]) => `<button class="tile" data-f="${k}" aria-pressed="${filter === k}"><b>${v}</b><span>${l}</span></button>`).join('');
+  document.querySelectorAll('.tile').forEach((b) => b.onclick = () => { filter = b.dataset.f; draw(); });
+  const list = base.filter((s) => filter === 'all' || s.status === filter);
+  $('count').textContent = list.length;
+  const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
+  $('rows').innerHTML = list.length ? list.map((s) => {
+    const pct = s.total ? Math.round(s.answered / s.total * 100) : 0;
+    const left = s.secondsLeft === null ? null : Math.max(0, s.secondsLeft - elapsed);
+    return `<tr><td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td><td>${s.groupNo ? 'Group ' + s.groupNo : '–'}</td>
+      <td><span class="pill ${LABEL[s.status][1]}">${LABEL[s.status][0]}</span></td>
+      <td>${s.status === 'none' ? '–' : `<div class="prog"><div class="bar ${s.status === 'submitted' ? 'done' : ''}"><i style="width:${pct}%"></i></div><span>${s.answered}/${s.total}</span></div>`}</td>
+      <td>${left === null ? '–' : left === 0 ? '<span class="time low">Time up</span>' : `<span class="time ${left <= 300 ? 'low' : ''}" data-left="${s.secondsLeft}">${mmss(left)}</span>`}</td></tr>`;
+  }).join('') : '<tr><td colspan="7">No students to show.</td></tr>';
+}
+$('q').oninput = draw; $('cls').onchange = draw;
+$('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause'; $('live').textContent = paused ? 'Paused' : 'Updating every 10 seconds'; $('live').classList.toggle('off', paused); if (!paused) load(); };
+setInterval(() => { if (!paused && !document.hidden) load(); }, 10000);
+// keeps the countdowns moving between updates (only the numbers change, so clicks are never interrupted)
+setInterval(() => {
+  const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
+  document.querySelectorAll('[data-left]').forEach((el) => {
+    const left = Math.max(0, Number(el.dataset.left) - elapsed);
+    el.textContent = left === 0 ? 'Time up' : mmss(left);
+    el.classList.toggle('low', left <= 300);
+  });
+}, 1000);
+load();
+</script>
+<script src="/shell.js" data-page="monitor" data-title="Exam monitor"></script>
+</body>
+</html>

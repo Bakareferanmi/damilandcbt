@@ -7,6 +7,7 @@
 <link rel="icon" href="/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<script src="/format.js"></script>
 <style>
   :root { --brand:#01309F; --brand-dark:#002580; --tint:#E8EEFC; --ink:#0B1230; --muted:#4A5470; --line:#CBD3E8; --bg:#F4F6FC; --ok:#0B5C38; --bad:#8C1D18; --warn:#8A4B00; }
   * { box-sizing:border-box }
@@ -271,8 +272,8 @@ function renderQ() {
   const s = cur(), q = s.questions[qi];
   $('ptitle').textContent = s.name;
   $('qno').textContent = `Question ${qi + 1} of ${s.questions.length}`;
-  $('qbody').textContent = q.body;
-  $('opts').innerHTML = ['A', 'B', 'C', 'D'].map((L) => `<button class="opt" data-l="${L}" aria-pressed="${answers[q.id] === L}"><i>${L}</i><span>${esc(q[L.toLowerCase()])}</span></button>`).join('');
+  $('qbody').innerHTML = fmt(q.body);
+  $('opts').innerHTML = ['A', 'B', 'C', 'D'].map((L) => `<button class="opt" data-l="${L}" aria-pressed="${answers[q.id] === L}"><i>${L}</i><span>${fmt(q[L.toLowerCase()])}</span></button>`).join('');
   document.querySelectorAll('.opt').forEach((b) => b.onclick = () => choose(b.dataset.l));
   $('prev').disabled = subj === 0 && qi === 0;
   $('next').textContent = subj === data.subjects.length - 1 && qi === s.questions.length - 1 ? 'Review & submit' : 'Next';

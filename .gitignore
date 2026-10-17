@@ -2,3 +2,7 @@ node_modules
 .wrangler
 .dev.vars
 dist
+
+backup.sql*
+*.sql.
+.dev.vars
