@@ -57,13 +57,17 @@ async function examInfo(db: D1Database, examId: number) {
 async function finalize(db: D1Database, attemptId: number) {
   await db.batch([
     db.prepare(`UPDATE attempts SET submitted_at = datetime('now') WHERE id = ? AND submitted_at IS NULL`).bind(attemptId),
+    // Marks in ONE pass over the student's answers (it used to re-read all of them once per subject).
+    // A subject with no right answers still gets a row, with 0.
     db.prepare(
       `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score)
-       SELECT a.id, s.id,
-              (SELECT COUNT(*) FROM answers w JOIN questions q ON q.id = w.question_id
-                WHERE w.attempt_id = a.id AND q.subject_id = s.id AND w.chosen = q.correct)
+       SELECT a.id, s.id, COALESCE(t.n, 0)
          FROM attempts a JOIN subjects s ON s.id IN ${SUBJECTS_OF}
-        WHERE a.id = ?`,
+         LEFT JOIN (SELECT q.subject_id AS sid, COUNT(*) AS n
+                      FROM answers w JOIN questions q ON q.id = w.question_id
+                     WHERE w.attempt_id = ?1 AND w.chosen = q.correct
+                     GROUP BY q.subject_id) t ON t.sid = s.id
+        WHERE a.id = ?1`,
     ).bind(attemptId),
   ]);
 }
@@ -112,18 +116,21 @@ exam.get('/', async (c) => {
   }
 
   // In progress: send the questions WITHOUT the correct answers.
-  const { results: qs } = await db
-    .prepare(
-      `SELECT q.id, q.subject_id AS subjectId, q.body, q.option_a AS a, q.option_b AS b, q.option_c AS c, q.option_d AS d
-         FROM attempts a JOIN questions q ON q.subject_id IN ${SUBJECTS_OF} AND q.exam_id = ?2
-        WHERE a.id = ?1 ORDER BY q.id`,
-    )
-    .bind(attempt.id, examId)
-    .all<{ id: number; subjectId: string; body: string; a: string; b: string; c: string; d: string }>();
   const { results: subs } = await db
     .prepare(`SELECT s.id, s.name FROM attempts a JOIN subjects s ON s.id IN ${SUBJECTS_OF} WHERE a.id = ? ORDER BY (s.id = 'eng') DESC, s.rowid`)
     .bind(attempt.id)
     .all<{ id: string; name: string }>();
+  // Look the questions up by exam + subject (uses the index). The old query could not, so every page load
+  // read EVERY question in the database, and that grew with each exam you stored.
+  const { results: qs } = await db
+    .prepare(
+      `SELECT q.id, q.subject_id AS subjectId, q.body, q.option_a AS a, q.option_b AS b, q.option_c AS c, q.option_d AS d
+         FROM questions q
+        WHERE q.exam_id = ? AND q.subject_id IN (${subs.map(() => '?').join(',')})
+        ORDER BY q.id`,
+    )
+    .bind(examId, ...subs.map((s) => s.id))
+    .all<{ id: number; subjectId: string; body: string; a: string; b: string; c: string; d: string }>();
   const { results: ans } = await db
     .prepare('SELECT question_id AS q, chosen FROM answers WHERE attempt_id = ?')
     .bind(attempt.id)
@@ -190,11 +197,14 @@ exam.put('/answer', async (c) => {
   // (3) otherwise change the existing answer. changes() is SQLite's "rows changed by the previous statement".
   const now = nowSec(), examId = c.get('examId');
   const valid = `a.id = ?1 AND a.submitted_at IS NULL AND ?4 <= a.ends_at + ${GRACE_SECONDS}`;
+  // Is this question one of the student's subjects? English, or a subject of their group (a direct lookup,
+  // instead of listing every subject on every save).
+  const inMySubjects = `(q.subject_id = 'eng' OR EXISTS (SELECT 1 FROM group_subjects g WHERE g.group_no = a.group_no AND g.subject_id = q.subject_id))`;
   const [ins, , upd] = await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT OR IGNORE INTO answers (attempt_id, question_id, chosen)
        SELECT a.id, q.id, ?3 FROM attempts a JOIN questions q ON q.id = ?2
-        WHERE ${valid} AND q.subject_id IN ${SUBJECTS_OF} AND q.exam_id = ?5`,
+        WHERE ${valid} AND ${inMySubjects} AND q.exam_id = ?5`,
     ).bind(attempt.id, questionId, chosen, now, examId),
     c.env.DB.prepare(`UPDATE attempts SET answered = answered + 1 WHERE id = ?1 AND changes() = 1`).bind(attempt.id),
     c.env.DB.prepare(

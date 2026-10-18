@@ -51,7 +51,7 @@ the live exam's questions across). The new session starts with one exam, "Exam 1
 ```
 public/        pages (login, admin console, exam, monitor, results…) + app.css, shell.js, format.js
 src/           Worker API (Hono): index.ts, auth.ts, exam.ts, exams.ts, questions.ts, results.ts, settings.ts, limits.ts, crypto.ts
-migrations/    0001–0008 D1 migrations (run in order)
+migrations/    0001–0009 D1 migrations (run in order)
 scripts/       make-admin.mjs  (create / reset an admin)
 wrangler.jsonc Cloudflare config
 ```
@@ -88,6 +88,8 @@ node scripts/make-admin.mjs --remote you@example.com "a-strong-password"
 ```
 
 Migration `0008_answered_counter.sql` adds a running "answered" count to each attempt so the Monitor no longer recounts every answer on every refresh (about 350 times fewer database reads). **Apply it to the live database BEFORE deploying the code that uses it.**
+
+Migration `0009_attempts_expiry_index.sql` swaps one index so the Monitor's "has anyone run out of time?" check reads nothing when nobody has. It only affects speed, so it is safe to apply before or after deploying.
 
 Migration `0007_exams.sql` (exams inside sessions) rebuilds the attempts table. It keeps all existing
 data (each session's existing questions and results become "Exam 1"), but **take the backup above first**.
