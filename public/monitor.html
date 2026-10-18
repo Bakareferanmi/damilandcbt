@@ -60,7 +60,40 @@
 
   /* ---- layout: cards + feed ---- */
   .monmain { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; align-items:start }
-  @media (min-width:1100px) { .monmain { grid-template-columns:minmax(0,1fr) 320px } .feed { position:sticky; top:24px } }
+  @media (min-width:1100px) { .monmain { grid-template-columns:minmax(0,1fr) 320px } }
+  .rail { display:flex; flex-direction:column; gap:24px; min-width:0 }
+  #q { flex:0 1 186px; min-width:120px }
+  .bar-row select { max-width:236px }
+  .ghost.sm { flex:0 0 auto; height:32px; padding:0 12px; font-size:12px; line-height:16px; border-width:1.5px; border-radius:10px }
+
+  /* ---- Lagos map, clock and weather ---- */
+  .mapcard { gap:12px; padding:16px }
+  .mapcard h2 { display:flex; align-items:center; gap:8px; font-size:16px; line-height:24px }
+  .mapbox { background:var(--tint); border-radius:12px; padding:8px; display:flex; justify-content:center }
+  .mapbox svg { width:100%; max-width:260px; height:auto; display:block; overflow:visible }
+  .ng { fill:#fff; stroke:var(--brand); stroke-width:3; stroke-linejoin:round; transition:fill .3s }
+  .mapbox:hover .ng { fill:#F7F9FF }
+  .pin { cursor:pointer; outline:none }
+  .pin .pd { fill:var(--bad); stroke:#fff; stroke-width:4; transition:transform .2s; transform-box:fill-box; transform-origin:center }
+  .pin:hover .pd, .pin:focus-visible .pd { transform:scale(1.35) }
+  .pin .pr { fill:none; stroke:var(--bad); stroke-width:4; transform-box:fill-box; transform-origin:center; animation:pinring 2s ease-out infinite }
+  .pin text { font:700 34px 'Poppins',sans-serif; fill:var(--brand); paint-order:stroke; stroke:#fff; stroke-width:8px; stroke-linejoin:round }
+  .pin.busy .pd { animation:blink .5s steps(2) infinite }
+  .clock { display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap }
+  .clock b { font-size:28px; line-height:36px; font-weight:700; color:var(--brand); font-variant-numeric:tabular-nums }
+  .clock span { font-size:12px; line-height:16px; color:var(--muted); font-weight:500 }
+  .wx { display:flex; flex-direction:column; gap:12px; font-size:14px; line-height:20px }
+  .wx .now { display:flex; align-items:center; gap:12px }
+  .wx .big { font-size:36px; line-height:40px }
+  .wx .t { font-size:18px; line-height:24px; font-weight:700; color:var(--ink) }
+  .wx .d { color:var(--muted); font-size:12px; line-height:16px }
+  .wx .next { display:grid; grid-template-columns:repeat(4,1fr); gap:8px }
+  .wx .next div { background:var(--bg); border-radius:10px; padding:8px 4px; text-align:center; font-size:12px; line-height:16px; color:var(--muted); transition:transform .15s }
+  .wx .next div:hover { transform:translateY(-2px) }
+  .wx .next b { display:block; font-size:14px; color:var(--ink) }
+  .wx .next i { display:block; font-style:normal; font-size:18px; line-height:24px }
+  .wx .err { color:var(--muted) }
+  @keyframes pinring { 0% { transform:scale(1); opacity:.9 } 100% { transform:scale(3.2); opacity:0 } }
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:16px }
   .empty { padding:48px 16px; text-align:center; color:var(--muted); background:#fff; border:2px dashed var(--line); border-radius:16px; grid-column:1/-1 }
 
@@ -104,7 +137,7 @@
 
   /* ---- activity feed ---- */
   .feed h2 { display:flex; align-items:center; gap:8px }
-  .events { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; max-height:520px; overflow:auto }
+  .events { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; max-height:320px; overflow:auto }
   .events li { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); font-size:14px; line-height:20px; animation:slidein .45s ease-out }
   .events li:last-child { border-bottom:0 }
   .events .pt { width:10px; height:10px; flex:0 0 10px; border-radius:50%; margin-top:5px; background:var(--brand) }
@@ -149,7 +182,7 @@
   <div class="tiles" id="tiles"></div>
 
   <div class="bar-row">
-    <input id="q" placeholder="Search name or code" aria-label="Search" style="max-width:240px">
+    <input id="q" placeholder="Search name or code" aria-label="Search">
     <select id="cls" aria-label="Class"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
     <select id="sort" aria-label="Sort by">
       <option value="attention">Sort: needs attention first</option><option value="time">Sort: least time left</option>
@@ -158,7 +191,7 @@
     <div class="seg" role="group" aria-label="View"><button type="button" data-v="cards" aria-pressed="true">Cards</button><button type="button" data-v="table" aria-pressed="false">Table</button></div>
     <span style="flex:1"></span>
     <span class="upd" id="upd"><span class="dot"></span><span id="updText">Live</span></span>
-    <button class="ghost" id="pause" type="button" style="height:40px;font-size:14px">Pause</button>
+    <button class="ghost sm" id="pause" type="button">Pause</button>
   </div>
 
   <div class="monmain">
@@ -169,10 +202,27 @@
         <tbody id="rows"></tbody>
       </table></div></div>
     </div>
-    <aside class="card feed" aria-label="Activity">
-      <h2>Activity</h2>
-      <ul class="events" id="events"><li class="none">Nothing yet. Events appear here as students start, submit or run low on time.</li></ul>
-    </aside>
+    <div class="rail">
+      <section class="card mapcard" aria-label="Lagos time and weather">
+        <h2>Lagos, Nigeria</h2>
+        <div class="mapbox">
+          <svg viewBox="0 0 723 594" role="img" aria-label="Map of Nigeria with Lagos marked">
+            <path class="ng" d="M58.9 138.3L62.1 136.4L62.8 135.7L63.2 134.4L63.0 133.2L62.1 132.1L60.9 130.7L60.0 129.6L59.6 125.7L59.8 124.7L60.4 123.8L61.5 122.8L62.4 120.8L62.1 118.7L60.7 114.4L60.7 111.7L62.4 103.8L61.7 88.9L74.9 78.6L78.8 74.9L88.2 60.2L90.1 47.4L90.3 46.0L90.5 31.6L94.4 31.5L96.1 31.2L97.8 30.4L106.9 21.5L109.7 19.6L112.9 18.3L120.0 16.6L131.9 13.7L133.8 13.5L135.1 14.2L136.4 15.5L137.9 16.0L141.3 16.2L147.3 15.2L155.8 15.6L157.7 15.2L160.3 13.5L161.1 12.6L162.0 10.4L162.8 9.5L164.3 8.7L173.1 7.2L175.0 7.6L191.9 14.2L208.7 20.7L209.6 21.3L210.6 21.3L214.0 19.5L215.1 19.2L218.3 19.9L219.4 20.1L223.4 22.5L231.8 30.3L241.4 40.7L246.3 49.5L247.5 52.1L251.2 56.2L253.3 58.1L255.2 59.5L256.9 60.2L259.1 60.5L263.3 60.5L264.4 60.2L266.1 59.6L268.9 57.2L272.5 53.0L273.8 52.8L280.0 53.9L282.1 53.9L284.0 53.3L305.6 40.4L307.5 39.5L309.6 39.3L324.6 41.4L326.3 42.0L328.4 43.8L329.9 44.8L332.0 46.4L332.9 46.8L334.6 47.3L335.4 47.7L336.3 48.4L337.6 50.1L343.5 55.5L344.6 56.0L345.7 55.5L347.8 55.1L350.2 55.5L351.6 56.1L354.2 58.0L355.3 59.3L357.0 62.1L358.1 63.3L360.2 64.6L376.0 69.2L377.9 69.4L395.2 71.4L397.5 71.4L400.5 70.5L401.6 70.5L414.2 71.9L415.4 71.8L416.5 71.2L417.6 70.2L427.8 58.2L429.7 56.4L431.0 55.7L432.1 55.4L432.9 54.4L433.1 52.9L434.4 51.2L445.7 45.0L448.1 43.9L476.9 37.9L478.6 37.5L484.3 37.0L495.0 38.3L523.8 38.2L541.7 42.6L548.4 45.3L556.7 50.3L559.2 52.4L560.5 53.0L563.9 53.9L565.8 53.7L568.0 52.7L569.0 52.4L572.0 53.6L572.9 54.3L573.5 55.0L574.4 54.2L575.4 54.5L576.3 55.3L577.8 55.2L579.9 55.3L581.6 55.4L582.9 55.6L584.2 56.0L585.9 55.8L586.8 51.8L588.2 51.3L589.3 50.7L590.0 48.7L588.9 48.4L589.3 47.5L590.2 46.4L590.4 45.5L592.5 43.4L593.8 43.1L594.2 42.3L594.4 41.4L595.5 42.4L597.0 43.0L597.8 41.3L598.7 41.0L600.0 40.7L601.0 39.9L602.5 38.1L603.0 37.0L603.8 37.5L604.2 36.2L605.1 35.7L606.2 35.6L607.9 33.0L608.7 32.3L607.9 31.5L607.0 31.1L608.7 31.3L609.4 30.3L611.1 30.6L612.8 30.3L618.1 27.6L619.6 27.1L621.1 26.9L620.9 27.9L622.6 28.1L623.7 27.8L624.5 27.2L625.6 27.5L625.2 28.6L626.9 27.9L628.4 27.6L629.8 27.1L630.9 25.7L630.1 25.3L630.5 24.5L631.6 24.4L631.3 23.1L631.8 22.3L634.5 19.5L635.4 18.9L635.4 17.9L637.5 17.2L652.2 17.8L665.9 36.5L679.3 55.3L682.8 71.3L686.2 87.3L686.2 91.9L686.6 93.2L686.6 94.3L686.2 96.1L686.8 97.7L687.7 98.2L700.7 98.9L704.5 99.8L706.0 100.6L706.0 102.1L706.4 103.1L708.1 104.4L708.8 105.1L709.2 106.3L710.5 107.0L711.3 107.8L711.8 109.0L712.8 109.0L713.7 108.6L715.0 108.8L715.2 110.0L714.1 111.1L713.3 112.5L712.4 116.9L711.3 118.2L711.6 119.3L712.6 121.9L712.8 123.0L712.6 125.0L711.8 126.9L710.5 133.0L710.1 134.0L707.9 136.8L707.7 138.0L708.4 138.7L709.6 138.8L710.5 139.8L711.8 141.2L712.4 142.2L712.8 143.4L712.8 144.9L712.6 146.2L712.2 147.7L711.6 149.1L710.7 150.2L709.9 150.7L706.7 151.8L705.4 152.6L703.2 154.6L702.0 155.3L698.5 156.4L697.5 157.0L692.1 161.9L690.0 162.3L687.7 164.3L686.6 165.0L685.3 165.7L684.0 166.0L682.8 165.8L678.7 164.1L676.4 163.4L674.4 163.4L672.3 165.2L670.0 167.5L668.0 170.0L666.5 172.5L665.7 174.9L664.8 175.8L662.7 177.2L661.6 178.0L661.0 179.0L660.8 180.2L661.2 182.5L660.8 183.4L649.9 199.3L648.2 202.7L646.1 210.2L643.9 221.5L642.6 225.3L643.1 227.3L643.1 228.7L642.0 230.8L641.4 231.7L640.1 232.7L638.8 233.5L637.7 234.0L633.0 234.5L630.9 235.2L630.1 237.2L630.1 238.5L630.7 240.5L630.9 241.6L630.7 243.0L629.2 245.2L628.8 246.5L629.0 247.8L629.6 248.8L631.3 250.5L632.0 251.9L631.8 252.8L631.1 253.9L630.7 255.3L629.8 259.3L629.6 263.2L627.9 267.4L624.1 269.1L619.4 269.8L615.3 271.5L614.5 272.2L612.8 274.3L612.1 275.0L608.1 277.1L607.2 278.4L609.4 278.9L609.8 280.1L610.4 281.9L610.2 284.3L610.0 285.4L609.8 286.4L607.0 291.3L605.7 294.2L605.7 296.6L606.2 298.8L604.9 310.1L604.2 312.7L603.0 314.4L602.1 314.8L600.6 314.7L599.1 315.0L598.1 317.4L597.2 319.3L596.1 320.4L590.2 323.7L588.2 323.7L586.3 322.9L584.6 322.8L583.8 323.2L582.3 324.0L580.6 324.0L578.9 323.5L579.5 324.3L580.8 327.7L581.0 330.3L578.6 332.0L577.8 333.4L576.7 334.5L575.4 334.7L573.1 334.3L571.8 334.9L570.5 336.8L570.1 339.4L570.1 342.1L571.2 347.0L571.2 348.2L570.5 349.5L568.2 352.9L568.0 354.4L568.0 356.7L568.2 359.0L568.6 360.5L568.8 361.5L568.4 362.4L566.3 364.7L560.3 373.0L558.2 376.9L557.7 378.1L557.5 379.4L557.7 380.7L558.6 384.3L558.4 385.5L557.5 386.1L556.7 386.8L555.0 389.1L551.3 392.8L547.9 396.2L544.1 401.7L543.0 402.9L542.0 403.7L543.2 404.8L544.1 405.5L547.1 409.9L549.2 412.4L550.1 413.8L549.4 415.3L548.4 415.4L547.3 415.1L545.8 415.7L543.2 418.0L542.4 418.6L542.0 419.7L540.5 420.3L539.2 420.4L538.3 421.5L534.7 424.1L531.1 427.4L530.0 428.9L529.6 430.6L530.0 431.5L531.3 433.0L531.7 434.0L531.5 435.6L531.1 437.2L529.4 441.3L528.1 443.2L526.4 444.1L524.0 444.4L522.5 445.7L521.7 447.7L521.3 450.2L520.8 451.5L519.8 452.6L518.3 453.5L516.8 453.8L514.9 453.5L513.4 454.1L511.9 453.8L509.7 453.8L506.1 454.2L504.6 454.0L503.5 453.0L502.5 450.2L501.4 445.5L501.2 443.2L501.2 440.8L501.2 438.0L499.9 435.5L498.0 434.0L492.5 433.0L490.5 431.1L489.3 428.4L488.8 425.7L487.8 423.3L485.8 421.9L480.9 420.1L476.9 417.9L475.4 417.4L474.3 416.5L473.9 413.5L472.8 412.1L472.0 413.8L471.3 416.1L470.7 418.3L470.5 422.9L469.4 423.5L468.8 424.4L468.1 425.2L467.9 426.2L467.9 427.5L452.6 427.7L451.1 427.2L449.8 426.3L449.1 425.1L448.3 420.7L447.9 419.7L445.5 420.3L431.0 432.8L429.7 433.3L428.7 433.0L427.4 432.4L426.1 432.3L424.8 433.6L420.3 448.0L419.7 448.7L417.6 448.7L415.0 449.1L414.2 449.8L412.7 452.4L411.8 453.5L410.5 454.1L408.2 454.9L406.1 456.2L404.3 459.6L402.6 460.6L400.9 460.6L399.4 461.2L398.6 462.1L396.9 465.7L395.4 467.8L387.3 474.4L381.9 480.2L380.7 482.0L379.8 482.8L379.0 483.3L378.5 485.5L377.3 486.4L376.0 485.9L374.7 485.8L373.6 486.7L372.8 487.7L370.6 489.1L370.0 490.1L370.2 491.3L370.9 492.4L371.3 493.4L371.1 494.9L370.0 496.1L368.9 496.9L368.5 497.8L369.4 499.3L370.6 500.5L371.9 501.5L373.0 502.7L373.6 504.3L373.4 505.7L372.3 506.9L371.3 508.0L370.4 509.2L370.0 510.5L370.2 511.6L370.4 512.8L370.4 514.0L370.0 515.4L368.7 518.0L368.3 519.4L368.9 521.6L367.4 530.5L366.4 531.5L364.9 531.9L363.2 534.3L362.7 535.1L361.9 537.7L361.5 539.0L360.6 540.2L358.3 543.9L357.8 545.0L356.1 546.2L355.7 547.2L355.9 548.4L356.3 550.1L355.3 551.1L354.2 550.4L353.1 551.1L352.3 552.2L351.6 553.9L351.6 555.1L351.9 556.0L351.4 557.5L349.9 557.6L349.1 557.3L347.8 557.3L348.2 556.3L348.7 555.1L346.7 555.6L344.2 555.1L344.2 553.3L344.8 551.2L345.0 549.2L344.2 551.2L342.9 552.2L341.2 552.1L339.7 550.7L340.1 549.9L338.4 549.2L338.8 548.4L338.2 547.7L336.7 546.5L335.2 545.6L334.8 544.6L334.2 543.3L333.1 542.6L331.6 541.6L330.7 540.5L333.7 544.0L334.4 545.0L336.1 547.9L336.3 549.3L335.2 549.9L335.6 550.7L336.3 551.7L336.9 552.5L338.0 553.3L339.1 556.0L339.7 556.9L339.1 558.6L339.3 560.0L340.3 560.6L341.2 562.5L340.1 563.3L339.1 564.0L338.4 565.0L337.8 566.8L336.5 567.2L333.9 567.2L330.5 566.8L325.6 566.8L323.1 566.4L322.0 566.5L319.9 567.5L318.8 567.6L316.2 567.6L306.0 568.8L304.7 568.4L303.6 569.3L304.7 569.4L305.6 569.7L304.3 570.1L302.4 570.2L300.7 569.9L300.0 569.1L293.8 568.4L294.7 567.6L293.2 567.5L292.6 566.8L293.6 565.8L293.6 564.9L292.6 563.5L293.0 562.7L292.1 561.7L292.3 560.1L293.4 557.3L292.3 557.8L291.7 558.6L291.5 560.1L291.7 561.4L291.3 562.5L292.1 563.4L291.1 565.2L289.8 566.0L288.5 565.6L287.6 566.8L286.4 566.7L284.2 565.6L282.7 565.5L281.2 565.2L280.0 564.6L279.3 563.5L278.5 563.9L277.4 563.9L277.0 565.0L277.2 566.0L278.7 567.5L280.2 567.8L280.4 568.7L277.4 569.7L275.7 567.4L272.1 563.3L271.4 562.1L271.4 560.4L270.2 560.2L268.9 560.3L268.2 559.6L267.2 558.8L265.7 555.5L265.0 554.5L264.6 555.7L264.4 556.8L265.5 557.3L266.1 559.4L266.5 560.3L267.6 560.6L269.5 561.6L270.8 563.7L271.0 565.6L269.5 566.4L271.2 567.8L271.6 568.8L271.2 570.0L269.7 571.8L268.7 572.2L267.4 571.7L267.4 572.6L266.3 572.4L265.5 571.8L265.2 570.9L265.5 569.7L264.6 570.5L264.4 571.4L264.8 572.5L265.5 573.4L263.8 573.8L262.7 572.4L262.3 570.9L262.0 567.8L261.2 566.2L261.0 565.2L261.8 564.3L262.0 563.2L262.3 561.9L263.3 561.5L261.8 559.4L261.2 557.5L259.9 558.5L259.3 557.5L258.6 556.2L258.2 557.1L258.4 558.5L258.8 559.9L260.1 563.5L259.1 563.5L258.6 562.7L257.8 563.1L257.1 562.0L256.5 560.9L254.8 559.0L255.0 560.0L256.1 562.3L256.7 563.3L256.7 564.3L256.5 565.6L257.1 564.7L258.2 564.4L259.3 564.6L259.7 565.4L259.3 569.6L259.3 571.0L261.4 575.1L262.3 576.1L261.6 577.3L260.3 577.5L258.6 576.6L258.8 577.6L257.6 577.2L256.3 576.5L255.0 576.2L253.7 576.8L252.9 576.0L252.4 575.0L252.4 574.0L252.9 572.9L251.8 572.4L251.0 570.9L250.3 568.9L250.1 567.4L250.1 566.3L250.7 565.3L251.6 564.2L251.8 563.2L251.6 562.3L250.5 561.9L249.0 561.0L248.0 559.0L247.1 555.3L246.9 553.9L247.8 552.2L248.0 551.0L246.7 551.6L246.0 550.5L245.0 550.3L243.9 549.9L244.1 550.9L244.3 552.0L244.6 552.9L245.4 553.2L246.3 554.8L246.7 556.9L246.9 559.2L247.3 560.2L248.6 561.0L249.2 562.0L250.3 563.9L249.0 565.1L248.6 566.4L249.9 572.3L250.5 574.1L251.2 575.0L251.2 576.4L252.2 577.5L253.1 578.4L251.6 579.2L249.7 579.5L247.3 579.7L245.2 579.5L243.9 578.7L243.9 574.3L244.1 573.3L243.5 572.6L243.5 570.5L243.7 569.6L245.0 565.9L245.2 563.5L243.9 564.9L243.1 567.4L242.6 570.2L243.1 572.2L242.8 573.8L242.0 572.5L241.8 568.7L240.7 569.1L240.5 570.2L240.7 572.9L240.9 573.9L241.6 575.2L242.0 576.3L242.6 578.5L242.2 579.8L239.9 580.0L238.2 580.2L237.1 577.9L236.9 576.0L237.1 573.3L236.9 571.1L235.8 569.6L234.1 569.7L235.8 571.1L236.4 573.1L236.2 575.5L235.4 577.9L235.2 579.9L232.4 580.6L228.8 580.3L227.3 579.2L225.6 579.6L226.2 580.7L225.1 581.0L223.6 581.1L222.6 581.4L221.5 581.9L218.7 582.0L217.5 582.4L216.2 580.8L217.2 578.3L221.3 573.8L220.0 573.6L217.0 576.2L216.8 573.0L216.0 570.2L215.3 571.3L215.5 572.8L215.8 574.3L216.2 575.4L215.1 574.2L213.4 573.4L214.0 574.8L214.7 575.7L215.1 576.8L215.1 578.3L214.7 579.5L214.3 580.4L213.4 580.8L213.0 582.0L213.8 581.7L214.7 582.0L212.8 583.1L210.4 583.2L208.9 582.8L208.1 583.6L207.2 583.3L206.6 581.8L206.6 580.8L206.8 579.8L207.6 578.4L206.8 577.8L206.8 575.3L205.5 575.1L204.0 575.0L204.0 576.5L204.4 577.9L204.7 579.4L205.3 581.0L205.1 582.3L204.0 581.6L203.2 581.2L201.9 581.1L201.2 578.7L200.8 577.3L200.8 576.0L200.8 575.0L200.0 577.1L198.9 576.2L199.7 578.3L200.0 579.3L199.1 580.0L197.4 579.3L196.5 578.7L195.1 577.9L193.6 576.8L192.9 575.3L193.6 573.8L192.5 573.9L192.3 575.0L191.0 574.0L188.7 572.6L187.8 571.7L189.1 572.3L188.2 571.5L186.7 571.0L185.5 569.6L183.3 567.2L177.6 561.9L175.9 559.5L175.2 556.9L176.1 557.3L176.1 556.2L173.5 554.6L172.9 553.4L172.4 552.5L170.9 549.9L170.3 549.2L172.4 550.4L172.0 549.0L170.1 546.8L168.4 542.1L167.7 539.4L167.5 538.5L166.7 536.8L166.5 535.9L166.3 534.9L165.6 534.0L165.2 532.5L166.0 531.5L167.1 531.6L168.0 531.9L169.7 533.9L169.5 532.0L169.2 531.1L170.3 531.2L171.6 531.5L169.5 528.9L168.8 529.9L168.0 530.2L166.7 530.6L164.5 530.6L163.7 529.7L163.9 527.5L163.7 524.8L162.4 519.4L164.1 518.3L168.0 518.2L169.2 517.9L169.5 518.8L170.5 519.2L170.9 518.3L171.6 517.6L173.5 516.8L174.6 516.7L176.1 517.1L174.6 515.1L174.1 514.1L173.7 513.3L173.7 512.3L173.9 511.4L175.0 510.2L178.0 510.1L179.3 509.0L180.1 507.6L179.3 508.0L178.4 508.7L177.6 509.2L176.5 508.8L175.6 509.7L174.4 509.4L172.9 510.1L172.0 511.4L172.4 512.9L171.8 514.4L170.9 515.4L168.8 514.9L168.0 513.9L167.1 514.9L167.5 515.8L164.5 516.1L157.7 513.8L157.3 512.8L155.2 510.8L153.9 509.9L153.5 508.7L153.5 507.4L153.9 506.5L154.9 505.5L155.8 505.0L161.8 505.3L163.9 505.6L165.2 506.3L166.0 505.5L167.1 503.4L168.4 502.4L170.1 502.6L170.9 503.5L171.2 504.8L172.0 505.1L172.4 503.9L172.0 503.0L170.9 502.0L169.7 501.1L168.8 500.7L167.5 500.7L166.3 503.1L164.8 504.1L163.7 504.4L162.6 504.3L161.6 503.7L161.1 502.8L161.1 501.8L162.2 498.5L162.4 497.6L162.2 496.5L160.3 501.0L159.6 502.2L158.8 503.0L157.7 503.4L156.4 503.5L154.3 504.5L152.8 505.0L151.7 504.3L150.9 503.5L149.8 502.3L149.2 501.1L148.5 499.3L148.1 498.5L147.5 497.5L147.3 496.1L147.5 494.9L147.7 493.5L148.3 492.5L149.8 492.2L150.9 493.2L151.7 492.9L151.3 491.7L153.2 489.5L158.1 487.7L159.4 485.4L158.1 485.6L156.2 487.5L153.9 488.2L149.4 490.5L148.5 491.1L145.6 494.0L142.6 489.0L135.5 479.6L134.3 478.5L131.9 477.5L130.8 476.2L129.3 473.8L127.2 471.7L125.5 470.2L121.0 467.3L119.1 466.1L115.5 462.7L113.1 461.2L112.3 460.7L106.9 458.5L103.3 457.8L90.5 455.4L75.4 454.1L50.0 455.4L48.7 455.2L47.8 454.7L46.6 453.3L47.4 452.9L48.3 453.3L49.1 452.4L49.6 453.7L49.8 454.6L51.9 452.6L53.0 453.2L54.7 452.8L55.7 452.7L56.6 452.2L57.5 451.3L57.5 450.0L58.1 449.2L60.4 449.2L61.7 449.0L64.5 448.2L66.6 447.9L67.7 447.2L68.5 446.2L69.0 444.9L74.5 443.8L73.7 443.3L69.6 442.6L66.2 443.9L63.0 445.8L60.2 446.8L59.2 446.8L56.4 448.0L55.1 448.3L54.0 448.2L52.5 448.0L51.9 446.8L52.1 444.7L52.1 443.8L51.3 444.4L50.4 445.1L49.1 446.6L48.1 446.8L47.4 447.8L47.6 448.7L47.4 449.9L46.8 451.1L46.4 452.3L45.7 453.0L46.1 453.9L46.8 454.8L46.6 456.2L42.9 456.5L36.3 456.2L28.6 457.1L19.5 456.7L6.2 457.9L6.2 454.3L6.7 451.5L6.9 450.3L8.2 446.6L8.2 445.2L7.7 442.7L7.7 441.5L8.4 440.2L9.4 439.3L10.3 438.8L10.3 435.3L9.9 434.4L8.6 434.2L7.5 433.2L7.3 432.0L7.5 430.8L8.2 428.2L7.7 425.7L7.1 423.4L6.9 421.2L8.4 419.0L9.9 418.5L10.7 417.5L8.8 415.7L8.0 414.2L8.4 413.4L8.8 412.3L9.4 411.1L8.4 395.5L9.0 394.6L10.9 394.9L11.2 393.9L11.4 391.3L10.1 389.1L8.4 387.0L7.1 384.8L6.9 382.4L6.9 380.5L7.5 372.4L6.9 370.7L5.4 369.1L4.8 367.3L4.3 366.4L5.0 364.5L5.4 360.2L6.0 356.4L6.2 352.8L6.5 351.7L6.9 350.7L7.5 349.7L8.0 348.6L8.0 347.3L7.5 346.1L6.5 343.5L6.0 342.2L5.8 340.8L5.8 339.6L6.2 337.1L6.0 335.4L6.5 334.2L7.7 332.8L8.6 330.2L8.4 328.3L7.3 313.7L7.7 312.5L8.6 312.1L9.0 311.3L8.8 310.3L8.8 308.9L9.7 307.2L9.7 306.2L8.8 305.6L9.7 304.0L10.1 302.0L10.3 298.1L10.1 296.6L14.6 296.9L16.1 296.4L17.1 295.5L19.5 295.3L20.8 295.7L22.0 296.4L26.7 295.3L28.2 294.3L29.1 292.5L31.0 286.3L32.3 284.0L32.7 282.6L32.7 278.8L32.5 277.8L31.6 275.9L31.4 274.2L31.6 272.6L32.7 270.7L34.0 270.1L38.0 264.9L37.8 263.9L38.2 262.0L39.3 261.7L40.4 261.9L41.4 262.0L43.4 260.9L43.8 259.3L43.4 257.5L42.5 255.6L42.3 254.5L42.5 253.1L42.9 251.9L44.0 251.2L48.3 249.4L50.6 248.8L54.0 249.2L55.1 248.2L56.8 245.4L58.7 243.0L59.2 241.9L59.6 236.7L60.0 235.8L60.9 234.9L61.7 234.5L62.6 233.9L63.0 232.6L63.2 231.2L63.0 230.3L58.5 225.4L57.7 224.0L57.7 222.9L58.9 220.1L60.4 217.8L60.7 216.0L61.3 215.0L62.4 213.8L63.4 213.4L64.7 213.7L68.5 215.7L70.5 214.5L70.7 213.3L70.9 210.2L71.3 208.6L72.8 205.6L73.2 204.0L73.2 202.2L73.2 200.7L73.0 198.9L72.4 197.8L70.9 197.2L69.6 196.3L69.0 194.4L68.3 193.2L67.3 192.3L67.1 190.5L68.3 187.3L68.3 185.6L67.3 180.2L66.6 179.2L66.2 178.1L66.0 176.9L66.0 175.5L66.4 173.2L65.6 172.7L64.5 172.8L63.0 171.4L52.3 156.5L51.5 154.9L51.3 153.5L52.5 150.2L53.0 149.3L53.6 146.6L57.7 139.6L58.9 138.3ZM292.8 571.0L294.7 570.8L295.1 571.7L294.5 572.4L293.4 572.7L291.3 572.6L287.4 573.8L286.4 573.9L281.9 573.6L281.0 573.2L281.2 571.3L284.7 570.2L287.4 571.5L288.5 571.7L289.6 571.6L291.7 571.1L292.8 571.0ZM277.0 570.5L279.8 570.2L279.8 571.2L279.3 572.7L279.3 573.6L278.9 574.5L277.6 575.6L276.8 575.9L271.4 577.1L269.5 576.9L268.9 576.1L269.5 575.0L271.4 573.0L272.7 571.0L273.8 569.6L274.4 568.0L276.1 570.2L277.0 570.5Z"/>
+            <g class="pin" id="pin" transform="translate(46.2 448.5)" tabindex="0" role="button" aria-label="Lagos. Select to refresh the weather">
+              <title>Lagos. Click to refresh the weather</title>
+              <circle class="pr" r="20"/><circle class="pd" r="20"/>
+              <text x="34" y="46">Lagos</text>
+            </g>
+          </svg>
+        </div>
+        <div class="clock"><b id="lgTime">--:--:--</b><span id="lgDate"></span></div>
+        <div class="wx" id="wx"><span class="err">Loading weather…</span></div>
+      </section>
+      <aside class="card feed" aria-label="Activity">
+        <h2>Activity</h2>
+        <ul class="events" id="events"><li class="none">Nothing yet. Events appear here as students start, submit or run low on time.</li></ul>
+      </aside>
+    </div>
   </div>
 </div>
 
@@ -390,6 +440,36 @@ setInterval(() => {
   });
 }, 1000);
 load();
+
+// ---- Lagos clock + weather (Open-Meteo, no key needed) ----
+const LAGOS = { lat: 6.5244, lon: 3.3792 };
+const clockFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const dateFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+function tickClock() { const n = new Date(); $('lgTime').textContent = clockFmt.format(n); $('lgDate').textContent = dateFmt.format(n) + ' · WAT'; }
+tickClock(); setInterval(tickClock, 1000);
+
+const wxInfo = (c) => c === 0 ? ['☀️', 'Clear sky'] : c <= 2 ? ['⛅', 'Partly cloudy'] : c === 3 ? ['☁️', 'Overcast'] : c <= 48 ? ['🌫️', 'Fog']
+  : c <= 57 ? ['🌦️', 'Drizzle'] : c <= 67 ? ['🌧️', 'Rain'] : c <= 77 ? ['❄️', 'Snow'] : c <= 82 ? ['🌦️', 'Showers'] : ['⛈️', 'Thunderstorm'];
+
+async function loadWeather() {
+  const pin = $('pin'); pin.classList.add('busy');
+  try {
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${LAGOS.lat}&longitude=${LAGOS.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,precipitation_probability&forecast_days=2&timezone=Africa%2FLagos`;
+    const r = await fetch(u); if (!r.ok) throw 0;
+    const d = await r.json(), c = d.current, [ic, txt] = wxInfo(c.weather_code);
+    let i = d.hourly.time.findIndex((t) => t > c.time); if (i < 0) i = 0;
+    const next = [2, 5, 8, 11].map((k) => i + k - 1).filter((k) => k < d.hourly.time.length).map((k) => {
+      const [ni] = wxInfo(d.hourly.weather_code[k]);
+      return `<div><b>${d.hourly.time[k].slice(11, 16)}</b><i>${ni}</i>${Math.round(d.hourly.temperature_2m[k])}°<br>${d.hourly.precipitation_probability[k] ?? 0}% rain</div>`;
+    }).join('');
+    $('wx').innerHTML = `<div class="now"><span class="big">${ic}</span><div><div class="t">${Math.round(c.temperature_2m)}°C · ${txt}</div>
+      <div class="d">Feels like ${Math.round(c.apparent_temperature)}° · Humidity ${c.relative_humidity_2m}% · Wind ${Math.round(c.wind_speed_10m)} km/h</div></div></div><div class="next">${next}</div>`;
+  } catch { $('wx').innerHTML = '<span class="err">Weather is unavailable right now. Select the pin to try again.</span>'; }
+  pin.classList.remove('busy');
+}
+$('pin').onclick = loadWeather;
+$('pin').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadWeather(); } };
+loadWeather(); setInterval(() => { if (!document.hidden) loadWeather(); }, 600000);
 </script>
 <script src="/shell.js" data-page="monitor" data-title="Exam monitor"></script>
 </body>
