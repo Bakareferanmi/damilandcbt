@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { currentExamId, currentSessionId, requireRole, VIEW_COOKIE, VIEW_EXAM_COOKIE, type Env } from './auth';
-import { closeOpenAttempts } from './exams';
+import { closeOpenAttempts, needsConfirm, writingCount } from './exams';
 import { hashPassword, verifyPassword } from './crypto';
 
 // Admin-only: other administrators, your own password, and academic sessions. Mounted at /api/admin.
@@ -83,10 +83,12 @@ settings.post('/sessions/view', admin, async (c) => {
 
 // Start a new session. It becomes the current one: only its students can log in from now on.
 settings.post('/sessions', admin, async (c) => {
-  const { name, copyQuestions } = await c.req.json<{ name?: string; copyQuestions?: boolean }>().catch(() => ({}) as { name?: string; copyQuestions?: boolean });
+  const { name, copyQuestions, confirm } = await c.req.json<{ name?: string; copyQuestions?: boolean; confirm?: boolean }>().catch(() => ({}) as { name?: string; copyQuestions?: boolean; confirm?: boolean });
   const n = sessionName(name);
   if (!n) return c.json({ error: 'Enter the session name, for example 2027/2028.' }, 400);
   const previousExam = await currentExamId(c.env.DB);
+  const writing = await writingCount(c.env.DB, previousExam);
+  if (writing && !confirm) return c.json(needsConfirm(writing), 409);
   let id: number;
   try {
     const row = await c.env.DB.prepare('INSERT INTO sessions (name) VALUES (?) RETURNING id').bind(n).first<{ id: number }>();

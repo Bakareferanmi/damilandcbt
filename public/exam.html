@@ -246,6 +246,7 @@ function note(el, t) { el.textContent = t; el.hidden = !t; }
 function startExam() {
   view('exam');
   answers = { ...data.answers };
+  sent = { ...data.answers }; inflight = new Set(); fails = 0;
   subj = 0; qi = 0;
   deadline = performance.now() + data.secondsLeft * 1000;
   clearInterval(tick); tick = setInterval(updateTimer, 500); updateTimer();
@@ -296,25 +297,47 @@ function go(d) {
 $('next').onclick = () => go(1);
 $('prev').onclick = () => go(-1);
 
+// Saving: one request per question at a time (so an older click can never land after a newer one),
+// waits that grow when the network is bad (so 50 phones do not hammer the server together), and it never gives up.
+let sent = {}, inflight = new Set(), fails = 0, retryTimer = null;
+const unsaved = () => Object.keys(answers).filter((id) => sent[id] !== answers[id]);
+function paintSave() {
+  const el = $('saved'), n = unsaved().length;
+  el.className = n && fails ? 'saved bad' : 'saved';
+  el.textContent = !n ? 'Saved ✓' : fails ? (navigator.onLine ? 'Not saved yet. Trying again…' : 'No connection. Your answers will save when it returns.') : 'Saving…';
+}
 async function choose(L) {
   const q = cur().questions[qi];
   answers[q.id] = L;
   renderQ(); renderTabs();
-  save(q.id, L, 0);
+  flush();
 }
-async function save(id, L, tries) {
-  const s = $('saved');
-  s.className = 'saved'; s.textContent = 'Saving…';
+async function sendOne(id) {
+  if (inflight.has(id)) return true; // it will notice the newer choice when it finishes
+  inflight.add(id);
+  const L = answers[id];
   try {
-    const r = await api('/api/student/exam/answer', { questionId: id, chosen: L }, 'PUT');
-    if (r.data.finished) return finish(true);
+    const r = await api('/api/student/exam/answer', { questionId: Number(id), chosen: L }, 'PUT');
+    if (r.data.finished) { finish(true); return true; }
     if (!r.ok) throw new Error();
-    if (answers[id] === L) s.textContent = 'Saved ✓';
-  } catch {
-    s.className = 'saved bad'; s.textContent = 'Not saved. Retrying…';
-    if (tries < 20) setTimeout(() => answers[id] === L && save(id, L, tries + 1), 3000);
+    sent[id] = L;
+    return true;
+  } catch { return false; }
+  finally { inflight.delete(id); }
+}
+async function flush() {
+  clearTimeout(retryTimer);
+  paintSave();
+  const todo = unsaved().filter((id) => !inflight.has(id));
+  const ok = await Promise.all(todo.map(sendOne));
+  if (ok.every(Boolean)) fails = 0; else fails++;
+  paintSave();
+  if (unsaved().length && !finishing) {
+    const wait = ok.every(Boolean) ? 0 : Math.min(15000, 1500 * 2 ** Math.min(fails, 4)) * (0.7 + Math.random() * 0.6);
+    retryTimer = setTimeout(flush, wait);
   }
 }
+addEventListener('online', () => { if (unsaved().length) { fails = 0; flush(); } });
 document.addEventListener('keydown', (e) => {
   if ($('exam').hidden || $('confirm').open || e.target.closest('#calc')) return;
   const k = e.key.toUpperCase();
@@ -333,12 +356,25 @@ function askSubmit() {
 $('submit-btn').onclick = askSubmit;
 $('c-no').onclick = () => $('confirm').close();
 $('c-yes').onclick = () => { $('confirm').close(); finish(false); };
-async function finish() {
-  clearInterval(tick);
+let finishing = false, submitFails = 0;
+async function finish(auto) {
+  if (finishing) return;
+  finishing = true;
+  clearInterval(tick); clearTimeout(retryTimer);
+  await Promise.all(unsaved().map(sendOne)); // one last try to send anything not saved yet
   const r = await api('/api/student/exam/submit', {});
-  if (!r.ok) { // retry once, then let the student try again
-    $('saved').className = 'saved bad'; $('saved').textContent = 'Could not submit. Check your connection and press Submit again.';
-    tick = setInterval(updateTimer, 500); return;
+  if (!r.ok) {
+    finishing = false; submitFails++;
+    $('saved').className = 'saved bad';
+    if (auto || performance.now() >= deadline) {
+      // Time is up: keep trying on our own, with growing waits (never twice a second).
+      $('saved').textContent = 'Time is up. Submitting… (waiting for the connection)';
+      setTimeout(() => finish(true), Math.min(15000, 1000 * 2 ** Math.min(submitFails, 4)) * (0.7 + Math.random() * 0.6));
+    } else {
+      $('saved').textContent = 'Could not submit. Check your connection and press Submit again.';
+      tick = setInterval(updateTimer, 500);
+    }
+    return;
   }
   data = (await api('/api/student/exam')).data;
   showDone();

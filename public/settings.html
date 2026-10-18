@@ -98,6 +98,15 @@ async function api(path, body, method) {
   const r = await fetch(path, { method: method || (body ? 'POST' : 'GET'), headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
   return { ok: r.ok, data: await r.json().catch(() => ({})) };
 }
+// Ends a running exam only after the admin has seen how many students are still writing.
+async function withEnd(path, body) {
+  let r = await api(path, body);
+  if (!r.ok && r.data.needsConfirm) {
+    if (!confirm(r.data.error + '\n\nContinue?')) return { ok: false, data: { error: 'Cancelled. Nobody was submitted.' }, cancelled: true };
+    r = await api(path, { ...body, confirm: true });
+  }
+  return r;
+}
 function say(id, r, okText) { const el = $(id); el.textContent = r.ok ? okText : (r.data.error || 'Something went wrong.'); el.className = 'msg ' + (r.ok ? 'ok' : 'bad'); el.hidden = false; }
 
 let examList = [], editing = null, pastSession = false;
@@ -120,17 +129,17 @@ async function loadExams() {
     editing = null; loadExams();
   });
   document.querySelectorAll('[data-live]').forEach((b) => b.onclick = async () => {
-    if (!confirm('Make “' + b.dataset.name + '” the live exam? Students will sit this one, and anyone still writing the current exam will be submitted.')) return;
-    const d = await api('/api/admin/exams/' + b.dataset.live + '/make-live', {});
-    if (!d.ok) return alert(d.data.error || 'Could not change.');
+    if (!confirm('Make “' + b.dataset.name + '” the live exam? Students will sit this one.')) return;
+    const d = await withEnd('/api/admin/exams/' + b.dataset.live + '/make-live', {});
+    if (!d.ok) return d.cancelled || alert(d.data.error || 'Could not change.');
     location.reload();
   });
 }
 $('newexam').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target;
   const live = examList.find((x) => x.live);
-  if (!confirm('Start “' + f.name.value + '”? It becomes the live exam' + (live ? ', and anyone still writing “' + live.name + '” will be submitted.' : '.'))) return;
-  const r = await api('/api/admin/exams', { name: f.name.value, minutes: Number(f.m.value), copyFrom: f.copy.value ? Number(f.copy.value) : null });
+  if (!confirm('Start “' + f.name.value + '”? It becomes the live exam' + (live ? ' and “' + live.name + '” is closed.' : '.'))) return;
+  const r = await withEnd('/api/admin/exams', { name: f.name.value, minutes: Number(f.m.value), copyFrom: f.copy.value ? Number(f.copy.value) : null });
   say('new-exam-msg', r, 'Exam started. It is now the live exam.');
   if (r.ok) setTimeout(() => location.reload(), 900);
 };
@@ -167,7 +176,7 @@ $('ren').onsubmit = async (e) => { e.preventDefault(); const r = await api('/api
 $('newsess').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target;
   if (!confirm('Start session ' + f.name.value + '? Students of ' + curSession.name + ' will no longer be able to log in.')) return;
-  const r = await api('/api/admin/sessions', { name: f.name.value, copyQuestions: f.copy.checked });
+  const r = await withEnd('/api/admin/sessions', { name: f.name.value, copyQuestions: f.copy.checked });
   say('new-msg', r, 'New session started. It is now the current session.');
   if (r.ok) setTimeout(() => location.reload(), 900);
 };

@@ -13,6 +13,7 @@
     menu: P('<path d="M4 6h16M4 12h16M4 18h16"/>'),
   };
   const items = [['overview', '/insights', 'Overview'], ['monitor', '/monitor', 'Monitor'], ['students', '/students', 'Students'], ['questions', '/questions', 'Questions'], ['results', '/results', 'Results'], ['settings', '/settings', 'Settings']];
+  const esc = (v) => String(v).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const script = document.currentScript;
   const page = script.dataset.page;
   const title = script.dataset.title || '';
@@ -26,7 +27,7 @@
       <aside class="side" aria-label="Main menu">
         <div class="brand"><img src="/logo.png" alt=""><div><b>Damiland</b><span>CBT admin</span></div></div>
         <nav class="nav">${items.map(([k, href, label]) => `<a href="${href}" ${k === page ? 'aria-current="page"' : ''}>${icons[k]}${label}</a>`).join('')}</nav>
-        <div class="who" title="${me.email}">${me.email}</div>
+        <div class="who" title="${esc(me.email)}">${esc(me.email)}</div>
         <button class="logout" id="shell-logout">${icons.logout}Log out</button>
       </aside>
       <div class="scrim"></div>
@@ -49,8 +50,8 @@
       if (!d.sessions || !e.exams) return;
       const box = document.createElement('div');
       box.className = 'sessbox';
-      box.innerHTML = `<label><span>Session</span><select id="shell-session" aria-label="Academic session">${d.sessions.map((x) => `<option value="${x.id}" ${x.id === d.viewing ? 'selected' : ''}>${x.name}${x.current ? ' (current)' : ''}</option>`).join('')}</select></label>
-        <label><span>Exam</span><select id="shell-exam" aria-label="Exam">${e.exams.map((x) => `<option value="${x.id}" ${x.id === e.viewing ? 'selected' : ''}>${x.name}${x.live ? ' (live)' : ''}</option>`).join('')}</select></label>`;
+      box.innerHTML = `<label><span>Session</span><select id="shell-session" aria-label="Academic session">${d.sessions.map((x) => `<option value="${x.id}" ${x.id === d.viewing ? 'selected' : ''}>${esc(x.name)}${x.current ? ' (current)' : ''}</option>`).join('')}</select></label>
+        <label><span>Exam</span><select id="shell-exam" aria-label="Exam">${e.exams.map((x) => `<option value="${x.id}" ${x.id === e.viewing ? 'selected' : ''}>${esc(x.name)}${x.live ? ' (live)' : ''}</option>`).join('')}</select></label>`;
       app.querySelector('.nav').before(box);
       box.querySelector('#shell-session').onchange = async (ev) => { await post('/api/admin/sessions/view', { id: Number(ev.target.value) }); location.reload(); };
       box.querySelector('#shell-exam').onchange = async (ev) => { await post('/api/admin/exams/view', { id: Number(ev.target.value) }); location.reload(); };

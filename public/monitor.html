@@ -427,7 +427,11 @@ function setUpd() {
   $('updText').textContent = s < 2 ? 'Live · just updated' : `Live · updated ${s}s ago`;
 }
 
-setInterval(() => { if (!paused && !document.hidden) load(); }, 5000);
+// Refresh every 5 s while students are writing, only every 30 s when nobody is (saves database reads), and straight away when the tab comes back.
+(function loop() {
+  setTimeout(async () => { if (!paused && !document.hidden) await load(); loop(); }, students.some((x) => x.status === 'in_progress') ? 5000 : 30000);
+})();
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !paused) load(); });
 // Every second: only the countdown numbers and the "updated" label change, so clicks and animations are never interrupted.
 setInterval(() => {
   setUpd();

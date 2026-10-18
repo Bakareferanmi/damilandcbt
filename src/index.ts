@@ -35,10 +35,20 @@ function readName(b: { firstName?: string; lastName?: string; fullName?: string 
 
 const app = new Hono<Env>();
 
+// API replies hold names and answers: never let a browser or proxy keep a copy.
+app.use('/api/*', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-store');
+  c.header('X-Content-Type-Options', 'nosniff');
+});
+
+// Lock-out keys include the caller's IP, so one person typing wrong passwords locks THEMSELVES out, not the real student.
+const ipOf = (c: { req: { header: (n: string) => string | undefined } }) => c.req.header('cf-connecting-ip') ?? 'local';
+
 // Show a clear message (instead of a blank "Internal Server Error") when something unexpected breaks.
 app.onError((err, c) => {
   console.error(err);
-  return c.json({ error: 'Something went wrong on the server. Check the terminal for details.' }, 500);
+  return c.json({ error: 'Something went wrong. Please try again. If it keeps happening, tell your teacher or the administrator.' }, 500);
 });
 
 // ---------- health ----------
@@ -54,7 +64,7 @@ app.post('/api/admin/login', async (c) => {
   const { email, password } = await c.req.json<{ email?: string; password?: string }>().catch(() => ({}) as any);
   if (!email || !password) return c.json({ error: 'Enter your email address and password.' }, 400);
 
-  const key = 'a:' + email.trim().toLowerCase();
+  const key = 'a:' + email.trim().toLowerCase() + ':' + ipOf(c);
   const wait = await lockedMinutes(c.env.DB, key);
   if (wait) return c.json({ error: lockMessage(wait) }, 429);
 
@@ -63,7 +73,7 @@ app.post('/api/admin/login', async (c) => {
     .first<{ id: number; email: string; password_hash: string }>();
 
   if (!admin || !(await verifyPassword(password, admin.password_hash))) {
-    await recordFail(c.env.DB, key);
+    if (admin) await recordFail(c.env.DB, key); // wrong guesses for emails that do not exist write nothing
     return c.json({ error: 'Email or password is not correct.' }, 401);
   }
   await clearFails(c.env.DB, key);
@@ -75,7 +85,7 @@ app.post('/api/student/login', async (c) => {
   const { code, password } = await c.req.json<{ code?: string; password?: string }>().catch(() => ({}) as any);
   if (!code || !password) return c.json({ error: 'Enter your student code and password.' }, 400);
 
-  const key = 's:' + code.trim().toUpperCase();
+  const key = 's:' + code.trim().toUpperCase() + ':' + ipOf(c);
   const wait = await lockedMinutes(c.env.DB, key);
   if (wait) return c.json({ error: lockMessage(wait) }, 429);
 
@@ -86,7 +96,7 @@ app.post('/api/student/login', async (c) => {
     .first<{ id: number; code: string; full_name: string; class_name: string; password_hash: string }>();
 
   if (!student || !(await verifyPassword(password.trim().toUpperCase(), student.password_hash))) {
-    await recordFail(c.env.DB, key);
+    if (student) await recordFail(c.env.DB, key); // codes that do not exist write nothing
     return c.json({ error: 'Student code or password is not correct.' }, 401);
   }
   await clearFails(c.env.DB, key);

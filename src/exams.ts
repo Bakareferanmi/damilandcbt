@@ -27,6 +27,14 @@ export async function closeOpenAttempts(db: D1Database, examId: number, onlyExpi
   ]);
 }
 
+// How many students are still writing this exam right now.
+export async function writingCount(db: D1Database, examId: number) {
+  const row = await db.prepare('SELECT COUNT(*) AS n FROM attempts WHERE exam_id = ? AND submitted_at IS NULL').bind(examId).first<{ n: number }>();
+  return row?.n ?? 0;
+}
+// Ending a running exam submits everyone still writing. The server refuses unless the admin has confirmed it, with the number of students.
+export const needsConfirm = (n: number) => ({ error: `${n} student${n === 1 ? ' is' : 's are'} still writing. This will submit ${n === 1 ? 'their' : 'their'} exam now.`, needsConfirm: true, writing: n });
+
 function examName(x: unknown) {
   const n = String(x ?? '').trim().replace(/\s+/g, ' ');
   return n.length >= 2 && n.length <= 40 ? n : null;
@@ -67,7 +75,7 @@ exams.post('/view', admin, async (c) => {
 // Start a new exam in the current session. It becomes the live exam; the previous one is closed
 // (anyone still sitting it is submitted and marked).
 exams.post('/', admin, scope, async (c) => {
-  const b = await c.req.json<{ name?: string; minutes?: number; copyFrom?: number | null }>().catch(() => ({}) as { name?: string; minutes?: number; copyFrom?: number | null });
+  const b = await c.req.json<{ name?: string; minutes?: number; copyFrom?: number | null; confirm?: boolean }>().catch(() => ({}) as { name?: string; minutes?: number; copyFrom?: number | null; confirm?: boolean });
   const name = examName(b.name);
   if (!name) return c.json({ error: 'Give the exam a name, for example First Term Exam.' }, 400);
   const minutes = minutesOf(b.minutes);
@@ -79,6 +87,8 @@ exams.post('/', admin, scope, async (c) => {
     if (!src) return c.json({ error: 'The exam to copy questions from was not found.' }, 400);
     copyFrom = src.id;
   }
+  const writing = await writingCount(c.env.DB, previous);
+  if (writing && !b.confirm) return c.json(needsConfirm(writing), 409);
   let id: number;
   try {
     const row = await c.env.DB.prepare('INSERT INTO exams (session_id, name, minutes) VALUES (?, ?, ?) RETURNING id').bind(sid, name, minutes).first<{ id: number }>();
@@ -122,6 +132,9 @@ exams.post('/:id/make-live', admin, scope, async (c) => {
   const ok = await c.env.DB.prepare('SELECT 1 AS x FROM exams WHERE id = ? AND session_id = ?').bind(id, c.get('sessionId')).first();
   if (!ok) return c.json({ error: 'Exam not found.' }, 404);
   if (id !== c.get('currentExamId')) {
+    const writing = await writingCount(c.env.DB, c.get('currentExamId'));
+    const body = await c.req.json<{ confirm?: boolean }>().catch(() => ({}) as { confirm?: boolean });
+    if (writing && !body.confirm) return c.json(needsConfirm(writing), 409);
     await closeOpenAttempts(c.env.DB, c.get('currentExamId'), false);
     await c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_exam_id'`).bind(String(id)).run();
   }
