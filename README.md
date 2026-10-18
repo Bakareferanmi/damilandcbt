@@ -51,7 +51,7 @@ the live exam's questions across). The new session starts with one exam, "Exam 1
 ```
 public/        pages (login, admin console, exam, monitor, results…) + app.css, shell.js, format.js
 src/           Worker API (Hono): index.ts, auth.ts, exam.ts, exams.ts, questions.ts, results.ts, settings.ts, limits.ts, crypto.ts
-migrations/    0001–0007 D1 migrations (run in order)
+migrations/    0001–0008 D1 migrations (run in order)
 scripts/       make-admin.mjs  (create / reset an admin)
 wrangler.jsonc Cloudflare config
 ```
@@ -87,6 +87,8 @@ npx wrangler secret put JWT_SECRET                                 # long random
 node scripts/make-admin.mjs --remote you@example.com "a-strong-password"
 ```
 
+Migration `0008_answered_counter.sql` adds a running "answered" count to each attempt so the Monitor no longer recounts every answer on every refresh (about 350 times fewer database reads). **Apply it to the live database BEFORE deploying the code that uses it.**
+
 Migration `0007_exams.sql` (exams inside sessions) rebuilds the attempts table. It keeps all existing
 data (each session's existing questions and results become "Exam 1"), but **take the backup above first**.
 
@@ -97,7 +99,9 @@ Domains & Routes → Add custom domain. No code changes needed.
 ## Security notes
 
 - Passwords are hashed (PBKDF2); student passwords are shown once at registration/reset.
-- 5 wrong logins in 15 minutes locks that account for 5 minutes.
+- 5 wrong logins in 15 minutes locks that account **for that device/network only** for 5 minutes (so nobody else can lock a student out). Wrong guesses for codes or emails that do not exist are not stored.
+- A removed admin loses access immediately. API replies are never cached (`no-store`), and `public/_headers` adds a Content-Security-Policy and other browser protections.
+- Ending a running exam (new exam, make live, new session) asks again with the number of students still writing; the server refuses without that confirmation.
 - Login uses an httpOnly cookie valid for 8 hours.
 - Never commit `.dev.vars`. Use a different, strong admin password on the live site.
 - Back up the database before migrations and before each new session.

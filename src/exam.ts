@@ -186,19 +186,27 @@ exam.put('/answer', async (c) => {
   if (!attempt) return c.json({ error: 'Start your exam first.' }, 409);
   if (attempt.submitted_at) return c.json({ error: 'Your exam has been submitted.', finished: true }, 409);
 
-  const res = await c.env.DB
-    .prepare(
-      `INSERT INTO answers (attempt_id, question_id, chosen)
-       SELECT a.id, q.id, ?3
-         FROM attempts a JOIN questions q ON q.id = ?2
-        WHERE a.id = ?1 AND a.submitted_at IS NULL AND ?4 <= a.ends_at + ${GRACE_SECONDS}
-          AND q.subject_id IN ${SUBJECTS_OF} AND q.exam_id = ?5
-       ON CONFLICT (attempt_id, question_id) DO UPDATE SET chosen = excluded.chosen`,
-    )
-    .bind(attempt.id, questionId, chosen, nowSec(), c.get('examId'))
-    .run();
+  // One atomic batch: (1) add the answer if it is new, (2) if it WAS new, add 1 to the attempt's running count,
+  // (3) otherwise change the existing answer. changes() is SQLite's "rows changed by the previous statement".
+  const now = nowSec(), examId = c.get('examId');
+  const valid = `a.id = ?1 AND a.submitted_at IS NULL AND ?4 <= a.ends_at + ${GRACE_SECONDS}`;
+  const [ins, , upd] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT OR IGNORE INTO answers (attempt_id, question_id, chosen)
+       SELECT a.id, q.id, ?3 FROM attempts a JOIN questions q ON q.id = ?2
+        WHERE ${valid} AND q.subject_id IN ${SUBJECTS_OF} AND q.exam_id = ?5`,
+    ).bind(attempt.id, questionId, chosen, now, examId),
+    c.env.DB.prepare(`UPDATE attempts SET answered = answered + 1 WHERE id = ?1 AND changes() = 1`).bind(attempt.id),
+    c.env.DB.prepare(
+      `UPDATE answers SET chosen = ?3 WHERE attempt_id = ?1 AND question_id = ?2 AND chosen <> ?3
+          AND EXISTS (SELECT 1 FROM attempts a WHERE ${valid})`,
+    ).bind(attempt.id, questionId, chosen, now),
+  ]);
 
-  if (!res.meta.changes) {
+  if (!ins.meta.changes && !upd.meta.changes) {
+    // Nothing changed: either the same answer was sent again (fine), or the answer is not allowed.
+    const same = await c.env.DB.prepare('SELECT 1 AS x FROM answers WHERE attempt_id = ? AND question_id = ? AND chosen = ?').bind(attempt.id, questionId, chosen).first();
+    if (same && nowSec() <= attempt.ends_at + GRACE_SECONDS) return c.json({ ok: true });
     if (nowSec() > attempt.ends_at + GRACE_SECONDS) {
       await finalize(c.env.DB, attempt.id);
       return c.json({ error: 'Time is up. Your exam has been submitted.', finished: true }, 409);

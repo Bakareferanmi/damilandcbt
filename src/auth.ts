@@ -35,6 +35,10 @@ export async function readSession(c: Context<Env>): Promise<Session | null> {
 export const requireRole = (role: Session['role']) => async (c: Context<Env>, next: Next) => {
   const session = await readSession(c);
   if (!session || session.role !== role) return c.json({ error: 'Please log in first.' }, 401);
+  // A removed admin loses access straight away (the signed cookie alone would stay valid for 8 hours).
+  if (role === 'admin' && !(await c.env.DB.prepare('SELECT 1 AS x FROM admins WHERE id = ?').bind(session.id).first())) {
+    return c.json({ error: 'Please log in first.' }, 401);
+  }
   c.set('session', session);
   await next();
 };
