@@ -12,18 +12,28 @@ const SUBJECTS_OF = `(SELECT id FROM subjects WHERE id = 'eng' OR id IN (SELECT 
 // Marks and submits attempts that are still open. With onlyExpired, only those whose time has run out
 // (students who closed the page); otherwise every open attempt (used when another exam goes live).
 export async function closeOpenAttempts(db: D1Database, examId: number, onlyExpired: boolean) {
-  const where = onlyExpired ? 'a.exam_id = ?1 AND a.submitted_at IS NULL AND a.ends_at + ?2 < ?3' : 'a.exam_id = ?1 AND a.submitted_at IS NULL';
-  const binds: unknown[] = onlyExpired ? [examId, GRACE_SECONDS, Math.floor(Date.now() / 1000)] : [examId];
+  // The time limit is worked out here (not inside the SQL) so the index (exam_id, submitted_at, ends_at)
+  // can answer "is anything expired?" without reading the attempts themselves.
+  const cond = (t: string) => `${t}.exam_id = ?1 AND ${t}.submitted_at IS NULL` + (onlyExpired ? ` AND ${t}.ends_at < ?2` : '');
+  const binds: unknown[] = onlyExpired ? [examId, Math.floor(Date.now() / 1000) - GRACE_SECONDS] : [examId];
+
+  // The Monitor calls this on every refresh and usually nothing has expired: one cheap look, then stop.
+  const any = await db.prepare(`SELECT 1 AS x FROM attempts a WHERE ${cond('a')} LIMIT 1`).bind(...binds).first();
+  if (!any) return;
+
   await db.batch([
+    // Marks each student in one pass over their answers (see finalize in exam.ts).
     db.prepare(
       `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score)
-       SELECT a.id, s.id,
-              (SELECT COUNT(*) FROM answers w JOIN questions q ON q.id = w.question_id
-                WHERE w.attempt_id = a.id AND q.subject_id = s.id AND w.chosen = q.correct)
+       SELECT a.id, s.id, COALESCE(t.n, 0)
          FROM attempts a JOIN subjects s ON s.id IN ${SUBJECTS_OF}
-        WHERE ${where}`,
+         LEFT JOIN (SELECT w.attempt_id AS aid, q.subject_id AS sid, COUNT(*) AS n
+                      FROM answers w JOIN questions q ON q.id = w.question_id
+                     WHERE w.chosen = q.correct AND w.attempt_id IN (SELECT x.id FROM attempts x WHERE ${cond('x')})
+                     GROUP BY w.attempt_id, q.subject_id) t ON t.aid = a.id AND t.sid = s.id
+        WHERE ${cond('a')}`,
     ).bind(...binds),
-    db.prepare(`UPDATE attempts AS a SET submitted_at = datetime('now') WHERE ${where}`).bind(...binds),
+    db.prepare(`UPDATE attempts AS a SET submitted_at = datetime('now') WHERE ${cond('a')}`).bind(...binds),
   ]);
 }
 
