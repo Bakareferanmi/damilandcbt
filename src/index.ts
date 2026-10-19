@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
 import { COOKIE, currentSessionId, liveExamOnly, readSession, requireRole, scope, startSession, type Env } from './auth';
-import { hashPassword, randomPassword, verifyPassword } from './crypto';
+import { decryptSecret, encryptSecret, hashPassword, randomPassword, verifyPassword } from './crypto';
 import { clearFails, lockedMinutes, lockMessage, recordFail } from './limits';
 import exam from './exam';
 import exams from './exams';
@@ -32,6 +32,13 @@ function readName(b: { firstName?: string; lastName?: string; fullName?: string 
   const full = properName(b.fullName);
   return full.length < 3 ? { error: 'Enter the student’s name.' } : { name: full };
 }
+
+// The key that locks the saved student passwords (PASSWORD_KEY, or JWT_SECRET when that is not set).
+const pwKey = (env: { PASSWORD_KEY?: string; JWT_SECRET: string }) => {
+  const k = env.PASSWORD_KEY || env.JWT_SECRET;
+  if (!k) throw new Error('JWT_SECRET is not set. See README.');
+  return k;
+};
 
 const app = new Hono<Env>();
 
@@ -129,7 +136,7 @@ app.get('/api/me', async (c) => {
 
 app.get('/api/admin/students', requireRole('admin'), scope, async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT s.code, s.full_name AS fullName, s.class_name AS className,
+    `SELECT s.code, s.full_name AS fullName, s.class_name AS className, (s.password_enc IS NOT NULL) AS hasPassword,
             CASE WHEN a.id IS NULL THEN 'none' WHEN a.submitted_at IS NULL THEN 'in_progress' ELSE 'submitted' END AS status
        FROM students s LEFT JOIN attempts a ON a.student_id = s.id AND a.exam_id = ? WHERE s.session_id = ? ORDER BY s.seq ASC`,
   )
@@ -150,11 +157,23 @@ app.put('/api/admin/students/:code', requireRole('admin'), scope, async (c) => {
   return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Student not found.' }, 404);
 });
 
-// Gives a student a new password (the old one stops working). Shown once, like at registration.
+// Shows a student's current password to an admin (for a student who forgot it and did not write it down).
+// Only students whose password was created or reset after this feature was added have one saved.
+app.get('/api/admin/students/:code/password', requireRole('admin'), scope, async (c) => {
+  const row = await c.env.DB.prepare('SELECT password_enc FROM students WHERE code = ? AND session_id = ?')
+    .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
+    .first<{ password_enc: string | null }>();
+  if (!row) return c.json({ error: 'Student not found.' }, 404);
+  const password = await decryptSecret(row.password_enc, pwKey(c.env));
+  if (!password) return c.json({ error: 'This password was not saved, so it cannot be shown. Use “Reset password” to give the student a new one.' }, 404);
+  return c.json({ ok: true, password });
+});
+
+// Gives a student a new password (the old one stops working). Also saved (encrypted) so an admin can view it again.
 app.post('/api/admin/students/:code/reset-password', requireRole('admin'), scope, async (c) => {
   const password = randomPassword(6);
-  const res = await c.env.DB.prepare('UPDATE students SET password_hash = ? WHERE code = ? AND session_id = ?')
-    .bind(await hashPassword(password), (c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
+  const res = await c.env.DB.prepare('UPDATE students SET password_hash = ?, password_enc = ? WHERE code = ? AND session_id = ?')
+    .bind(await hashPassword(password), await encryptSecret(password, pwKey(c.env)), (c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
     .run();
   return res.meta.changes ? c.json({ ok: true, password }) : c.json({ error: 'Student not found.' }, 404);
 });
@@ -193,20 +212,21 @@ app.post('/api/admin/students', requireRole('admin'), scope, async (c) => {
 
   const password = randomPassword(6);
   const passwordHash = await hashPassword(password);
+  const passwordEnc = await encryptSecret(password, pwKey(c.env));
 
   // The next number (per session: every session starts again at 001) is worked out inside the same SQL
   // statement, so two admins registering at the same moment cannot receive the same code.
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const row = await c.env.DB.prepare(
-        `INSERT INTO students (session_id, seq, code, full_name, class_name, password_hash)
-         SELECT ?4, n, 'DAMILANDCBT' || printf('%03d', n), ?1, ?2, ?3
+        `INSERT INTO students (session_id, seq, code, full_name, class_name, password_hash, password_enc)
+         SELECT ?4, n, 'DAMILANDCBT' || printf('%03d', n), ?1, ?2, ?3, ?5
            FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM students WHERE session_id = ?4)
          RETURNING code`,
       )
-        .bind(name, className, passwordHash, c.get('sessionId'))
+        .bind(name, className, passwordHash, c.get('sessionId'), passwordEnc)
         .first<{ code: string }>();
-      // The password is shown ONCE here. Only its hash is stored.
+      // Login uses the hash. An encrypted copy is kept too, so an admin can view the password later.
       return c.json({ ok: true, code: row!.code, fullName: name, className, password }, 201);
     } catch (err) {
       if (attempt === 2) throw err;

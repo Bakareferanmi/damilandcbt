@@ -60,10 +60,10 @@
   </div>
 </div>
 
-<!-- Login details to give the student. Passwords are stored scrambled, so they are only visible right now. -->
+<!-- Login details to give the student. An admin can open them again later with "View password". -->
 <dialog id="slipd">
   <h2>Login details</h2>
-  <p style="margin:8px 0 16px">Give these to the student now. The password cannot be shown again (you can reset it later).</p>
+  <p style="margin:8px 0 16px">Give these to the student. If they forget, click “View password” next to their name.</p>
   <div class="slip" id="slip"></div>
   <div class="acts" style="margin-top:16px"><button class="ghost" id="print">Print</button><button class="btn" id="slip-close">Done</button></div>
 </dialog>
@@ -103,9 +103,10 @@ function draw() {
   $('rows').innerHTML = list.length ? list.map((s) => `<tr>
     <td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td>
     <td><span class="pill ${STATUS[s.status][1]}">${STATUS[s.status][0]}</span></td>
-    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button><button class="ghost" data-reset="${esc(s.code)}">Reset password</button>${s.status === 'none' ? `<button class="ghost danger" data-delete="${esc(s.code)}">Delete</button>` : `<button class="ghost danger" data-retake="${esc(s.code)}">Allow retake</button>`}</div></td></tr>`).join('')
+    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button>${s.hasPassword ? `<button class="ghost" data-view="${esc(s.code)}">View password</button>` : ''}<button class="ghost" data-reset="${esc(s.code)}">Reset password</button>${s.status === 'none' ? `<button class="ghost danger" data-delete="${esc(s.code)}">Delete</button>` : `<button class="ghost danger" data-retake="${esc(s.code)}">Allow retake</button>`}</div></td></tr>`).join('')
     : '<tr><td colspan="5">No students found.</td></tr>';
   document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => openEdit(b.dataset.edit));
+  document.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => viewPw(b.dataset.view));
   document.querySelectorAll('[data-reset]').forEach((b) => b.onclick = () => resetPw(b.dataset.reset));
   document.querySelectorAll('[data-retake]').forEach((b) => b.onclick = () => retake(b.dataset.retake));
   document.querySelectorAll('[data-delete]').forEach((b) => b.onclick = () => remove(b.dataset.delete));
@@ -147,6 +148,12 @@ async function remove(code) {
   const r = await api(`/api/admin/students/${code}`, null, 'DELETE');
   if (!r.ok) return alert(r.data.error || 'Could not delete.');
   load();
+}
+async function viewPw(code) {
+  const s = students.find((x) => x.code === code);
+  const r = await api(`/api/admin/students/${code}/password`);
+  if (!r.ok) { alert(r.data.error || 'Could not show the password.'); load(); return; }
+  showSlip(s.fullName, s.className, code, r.data.password);
 }
 async function resetPw(code) {
   const s = students.find((x) => x.code === code);

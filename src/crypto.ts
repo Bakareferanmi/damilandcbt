@@ -32,6 +32,34 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return diff === 0;
 }
 
+// ---------- reversible encryption (so an admin can look a student's password up again) ----------
+// Stored format:  v1$<iv base64>$<ciphertext base64>   (AES-256-GCM)
+// The key is derived from a Cloudflare secret, so a copy of the database alone cannot reveal passwords.
+
+async function aesKey(secret: string) {
+  const raw = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('damiland-student-password-v1:' + secret));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+export async function encryptSecret(plain: string, secret: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await aesKey(secret), new TextEncoder().encode(plain));
+  return `v1$${toB64(iv)}$${toB64(ct)}`;
+}
+
+// Returns null when the value is missing, malformed, or the secret has changed.
+export async function decryptSecret(stored: string | null | undefined, secret: string): Promise<string | null> {
+  if (!stored) return null;
+  const [scheme, iv, ct] = stored.split('$');
+  if (scheme !== 'v1' || !iv || !ct) return null;
+  try {
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(iv) }, await aesKey(secret), fromB64(ct));
+    return new TextDecoder().decode(plain);
+  } catch {
+    return null;
+  }
+}
+
 // Easy-to-read random password for students (no 0/O, 1/I/L confusion).
 export function randomPassword(length = 6): string {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';

@@ -24,7 +24,7 @@ built-in calculator. Scores stay hidden until the admin releases them.
   card per student with a progress ring and countdown (amber under 5 min, red and pulsing under 1 min),
   an activity feed (started, halfway, 5 min left, submitted), cards/table views, sorting, and a full-screen
   mode for a projector. Refreshes every 5 s; confetti when everyone has submitted
-- **Students** – register (first + last name, class), edit, reset password, allow retake, delete
+- **Students** – register (first + last name, class), edit, view or reset a password, allow retake, delete
   (only if the student has not started), print login slips
 - **Questions** – add/edit/delete, CSV import (template in `public/questions-template.csv`),
   symbols for maths/science
@@ -51,7 +51,7 @@ the live exam's questions across). The new session starts with one exam, "Exam 1
 ```
 public/        pages (login, admin console, exam, monitor, results…) + app.css, shell.js, format.js
 src/           Worker API (Hono): index.ts, auth.ts, exam.ts, exams.ts, questions.ts, results.ts, settings.ts, limits.ts, crypto.ts
-migrations/    0001–0009 D1 migrations (run in order)
+migrations/    0001–0010 D1 migrations (run in order)
 scripts/       make-admin.mjs  (create / reset an admin)
 wrangler.jsonc Cloudflare config
 ```
@@ -91,6 +91,8 @@ Migration `0008_answered_counter.sql` adds a running "answered" count to each at
 
 Migration `0009_attempts_expiry_index.sql` swaps one index so the Monitor's "has anyone run out of time?" check reads nothing when nobody has. It only affects speed, so it is safe to apply before or after deploying.
 
+Migration `0010_student_password_enc.sql` adds a column for the encrypted student password (see Security notes). **Apply it to the live database BEFORE deploying the code that uses it.** Optionally set a separate key first: `npx wrangler secret put PASSWORD_KEY` (and add `PASSWORD_KEY=...` to `.dev.vars` locally).
+
 Migration `0007_exams.sql` (exams inside sessions) rebuilds the attempts table. It keeps all existing
 data (each session's existing questions and results become "Exam 1"), but **take the backup above first**.
 
@@ -100,7 +102,12 @@ Domains & Routes → Add custom domain. No code changes needed.
 
 ## Security notes
 
-- Passwords are hashed (PBKDF2); student passwords are shown once at registration/reset.
+- Admin and student logins are checked against a PBKDF2 hash. For students, an **encrypted copy** of the password
+  (AES-256-GCM) is also kept so an admin can click **View password** on the Students page when a student forgets it.
+  The key comes from the Cloudflare secret `PASSWORD_KEY` (or `JWT_SECRET` if `PASSWORD_KEY` is not set), so a copy of
+  the database alone cannot reveal passwords. **Do not change that secret** after students are registered, or the saved
+  passwords can no longer be read (admins can still reset them). Students registered before migration `0010` have no
+  saved password: reset it once and it becomes viewable. Admin passwords are never viewable.
 - 5 wrong logins in 15 minutes locks that account **for that device/network only** for 5 minutes (so nobody else can lock a student out). Wrong guesses for codes or emails that do not exist are not stored.
 - A removed admin loses access immediately. API replies are never cached (`no-store`), and `public/_headers` adds a Content-Security-Policy and other browser protections.
 - Ending a running exam (new exam, make live, new session) asks again with the number of students still writing; the server refuses without that confirmation.
