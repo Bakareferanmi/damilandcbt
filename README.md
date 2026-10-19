@@ -8,7 +8,7 @@ A computer-based test (CBT) web app for SS3 students, built entirely on Cloudfla
 **Students** log in with their code (e.g. `DAMILANDCBT001`) and password, sit **Use of English + their
 subject group**, 50 objective questions per subject (options A–D), with a server-controlled timer.
 Questions are shuffled per student; answer options keep their A–D order. Science students get a
-built-in calculator. Scores stay hidden until the admin releases them.
+built-in calculator. Scores stay hidden until the admin releases them; once released, the student can **print their result slip, save it as a PDF, or download it as a CSV** from the result screen (same slip as the admin's).
 
 | Group | Subjects (plus Use of English) |
 |---|---|
