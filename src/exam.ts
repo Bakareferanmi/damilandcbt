@@ -110,9 +110,17 @@ exam.get('/', async (c) => {
 
   if (attempt.submitted_at) {
     // Scores stay hidden until an admin releases them.
-    return attempt.released
-      ? c.json({ status: 'submitted', examName: info.name, released: true, results: await results(db, attempt.id, examId) })
-      : c.json({ status: 'submitted', examName: info.name, released: false });
+    if (!attempt.released) return c.json({ status: 'submitted', examName: info.name, released: false });
+    // Everything the printable result slip needs (same details as the admin's slip).
+    const [rows, me, ses] = await Promise.all([
+      results(db, attempt.id, examId),
+      db.prepare('SELECT code, full_name AS fullName, class_name AS className FROM students WHERE id = ?').bind(studentId).first<{ code: string; fullName: string; className: string }>(),
+      db.prepare('SELECT name FROM sessions WHERE id = ?').bind(c.get('sessionId')).first<{ name: string }>(),
+    ]);
+    return c.json({
+      status: 'submitted', examName: info.name, released: true, results: rows,
+      slip: { ...me, groupNo: attempt.group_no, submittedAt: attempt.submitted_at, sessionName: ses?.name ?? '' },
+    });
   }
 
   // In progress: send the questions WITHOUT the correct answers.

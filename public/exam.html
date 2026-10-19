@@ -97,6 +97,33 @@
   dialog { border:0; border-radius:16px; padding:24px; max-width:440px; width:calc(100% - 32px) }
   dialog::backdrop { background:rgba(11,18,48,.5) }
   dialog .row { display:flex; gap:12px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap }
+
+  /* ---- printable result slip (hidden on screen; same layout as the admin's) ---- */
+  #slips { display:none }
+  .rs { font-family:'Poppins',system-ui,sans-serif; color:#000; padding:8mm 4mm; display:flex; flex-direction:column; gap:20px }
+  .rs .head { display:flex; align-items:center; gap:16px; padding-bottom:16px; border-bottom:3px solid #01309F }
+  .rs .head img { width:64px; height:64px; object-fit:contain }
+  .rs .head b { display:block; font-size:24px; line-height:32px; color:#01309F }
+  .rs .head span { font-size:14px; color:#333 }
+  .rs .head .ses { margin-left:auto; text-align:right; font-weight:600; font-size:16px }
+  .rs h2 { margin:0; font-size:20px; text-align:center; letter-spacing:.06em; text-transform:uppercase }
+  .rs dl { display:grid; grid-template-columns:160px 1fr; gap:8px 16px; margin:0; font-size:16px }
+  .rs dt { color:#555 } .rs dd { margin:0; font-weight:600 }
+  .rs table { width:100%; border-collapse:collapse; font-size:16px }
+  .rs th, .rs td { border:1px solid #444; padding:10px 12px; text-align:left }
+  .rs th { background:#E8EEFC; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+  .rs td.n, .rs th.n { text-align:right }
+  .rs tr.tot td { font-weight:700; background:#F4F6FC; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+  .rs .sign { display:flex; justify-content:space-between; gap:32px; margin-top:48px; font-size:14px }
+  .rs .sign div { flex:1; border-top:1px solid #000; padding-top:8px; text-align:center }
+  .rs .foot { margin-top:auto; font-size:12px; color:#555; text-align:center }
+  @page { size:A4; margin:14mm }
+  @media print {
+    body.printing > *:not(#slips) { display:none !important }
+    body.printing { background:#fff }
+    body.printing #slips { display:block }
+    .rs { min-height:255mm }
+  }
 </style>
 </head>
 <body>
@@ -173,6 +200,13 @@
       <h1 id="done-title">Exam submitted</h1>
       <p id="done-text">Well done. Your answers have been saved.</p>
       <div id="scores" style="display:flex;flex-direction:column;gap:12px"></div>
+      <div id="slip-actions" hidden>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <button class="primary" id="slip-print">Print result slip</button>
+          <button class="ghost" id="slip-csv">Download (CSV)</button>
+        </div>
+        <p style="margin-top:12px;font-size:14px;line-height:20px;color:var(--muted)">To keep a copy as a file, click “Print result slip” and choose <b>Save as PDF</b> as the printer.</p>
+      </div>
     </div>
   </div>
 </div>
@@ -385,6 +419,7 @@ function showDone() {
   if (!data.released) {
     $('done-text').textContent = 'Well done. Your answers have been saved. Your scores will be available once your school releases the results. Check back later.';
     $('scores').innerHTML = '';
+    $('slip-actions').hidden = true;
     return;
   }
   $('done-text').textContent = 'Well done. Your answers have been saved. Here are your scores.';
@@ -392,7 +427,49 @@ function showDone() {
   const sum = rows.reduce((a, r) => a + r.score, 0), tot = rows.reduce((a, r) => a + r.total, 0);
   $('scores').innerHTML = rows.map((r) => `<div class="score"><span>${esc(r.subject)}</span><b>${r.score} / ${r.total}</b></div>`).join('') +
     `<div class="score" style="background:var(--tint)"><span><b style="font-size:16px">Total</b></span><b>${sum} / ${tot}</b></div>`;
+  $('slip-actions').hidden = !data.slip;
 }
+
+/* ---------- result slip: print / save as PDF, or download as CSV ---------- */
+const pctOf = (a, b) => b ? Math.round(a / b * 1000) / 10 + '%' : '–';
+function slipHtml() {
+  const x = data.slip, rows = data.results || [];
+  const sum = rows.reduce((a, r) => a + r.score, 0), tot = rows.reduce((a, r) => a + r.total, 0);
+  const date = x.submittedAt ? new Date(x.submittedAt.replace(' ', 'T') + 'Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  return `<section class="rs">
+    <div class="head"><img src="/logo.png" alt=""><div><b>Damiland CBT</b><span>Computer-Based Test</span></div><div class="ses">${esc(data.examName || '')}<br>Session ${esc(x.sessionName || '')}</div></div>
+    <h2>Examination result slip</h2>
+    <dl><dt>Name</dt><dd>${esc(x.fullName)}</dd><dt>Student code</dt><dd>${esc(x.code)}</dd><dt>Class</dt><dd>${esc(x.className)}</dd><dt>Subject group</dt><dd>Group ${x.groupNo}</dd>${date ? `<dt>Date of exam</dt><dd>${esc(date)}</dd>` : ''}</dl>
+    <table><thead><tr><th>Subject</th><th class="n">Score</th><th class="n">Out of</th><th class="n">Percent</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td>${esc(r.subject)}</td><td class="n">${r.score}</td><td class="n">${r.total}</td><td class="n">${pctOf(r.score, r.total)}</td></tr>`).join('')}
+      <tr class="tot"><td>Total</td><td class="n">${sum}</td><td class="n">${tot}</td><td class="n">${pctOf(sum, tot)}</td></tr>
+    </tbody></table>
+    <div class="sign"><div>Exam officer</div><div>Principal</div></div>
+    <div class="foot">Printed on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+  </section>`;
+}
+$('slip-print').onclick = () => {
+  if (!data || !data.slip) return;
+  const box = document.createElement('div');
+  box.id = 'slips'; box.innerHTML = slipHtml();
+  document.body.appendChild(box);
+  document.body.classList.add('printing');
+  window.addEventListener('afterprint', () => { document.body.classList.remove('printing'); box.remove(); }, { once: true });
+  setTimeout(() => window.print(), 100);
+};
+$('slip-csv').onclick = () => {
+  if (!data || !data.slip) return;
+  const x = data.slip, rows = data.results || [];
+  const sum = rows.reduce((a, r) => a + r.score, 0), tot = rows.reduce((a, r) => a + r.total, 0);
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const head = ['Student code', 'Name', 'Class', 'Group', ...rows.map((r) => r.subject), 'Total', 'Out of', 'Percent'];
+  const line = [x.code, x.fullName, x.className, 'Group ' + x.groupNo, ...rows.map((r) => r.score), sum, tot, pctOf(sum, tot)];
+  const csv = '\uFEFF' + [head, line].map((r) => r.map(q).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'damiland-cbt-result-' + String(x.code).toLowerCase() + '.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+};
 
 /* ---------- calculator ---------- */
 (function () {
