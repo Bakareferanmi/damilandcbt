@@ -203,9 +203,9 @@
       <div id="slip-actions" hidden>
         <div style="display:flex;gap:12px;flex-wrap:wrap">
           <button class="primary" id="slip-print">Print result slip</button>
-          <button class="ghost" id="slip-csv">Download (CSV)</button>
+          <button class="ghost" id="slip-pdf">Download PDF</button>
         </div>
-        <p style="margin-top:12px;font-size:14px;line-height:20px;color:var(--muted)">To keep a copy as a file, click “Print result slip” and choose <b>Save as PDF</b> as the printer.</p>
+        <p style="margin-top:12px;font-size:14px;line-height:20px;color:var(--muted)">“Download PDF” saves your result slip to this device. “Print result slip” sends it to a printer.</p>
       </div>
     </div>
   </div>
@@ -217,6 +217,7 @@
   <div class="row"><button class="ghost" id="c-no">Keep answering</button><button class="primary" id="c-yes">Yes, submit</button></div>
 </dialog>
 
+<script src="/result-pdf.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -430,7 +431,7 @@ function showDone() {
   $('slip-actions').hidden = !data.slip;
 }
 
-/* ---------- result slip: print / save as PDF, or download as CSV ---------- */
+/* ---------- result slip: print it, or download it as a PDF ---------- */
 const pctOf = (a, b) => b ? Math.round(a / b * 1000) / 10 + '%' : '–';
 function slipHtml() {
   const x = data.slip, rows = data.results || [];
@@ -457,18 +458,28 @@ $('slip-print').onclick = () => {
   window.addEventListener('afterprint', () => { document.body.classList.remove('printing'); box.remove(); }, { once: true });
   setTimeout(() => window.print(), 100);
 };
-$('slip-csv').onclick = () => {
+// The school logo as a JPEG (PDF files cannot hold a PNG with see-through parts directly). If it fails, the slip is made without it.
+async function logoJpeg() {
+  try {
+    const img = new Image(); img.src = '/logo.png'; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0);
+    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), width: c.width, height: c.height };
+  } catch { return null; }
+}
+$('slip-pdf').onclick = async () => {
   if (!data || !data.slip) return;
-  const x = data.slip, rows = data.results || [];
-  const sum = rows.reduce((a, r) => a + r.score, 0), tot = rows.reduce((a, r) => a + r.total, 0);
-  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const head = ['Student code', 'Name', 'Class', 'Group', ...rows.map((r) => r.subject), 'Total', 'Out of', 'Percent'];
-  const line = [x.code, x.fullName, x.className, 'Group ' + x.groupNo, ...rows.map((r) => r.score), sum, tot, pctOf(sum, tot)];
-  const csv = '\uFEFF' + [head, line].map((r) => r.map(q).join(',')).join('\r\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = 'damiland-cbt-result-' + String(x.code).toLowerCase() + '.csv';
-  a.click(); URL.revokeObjectURL(a.href);
+  const btn = $('slip-pdf'); btn.disabled = true;
+  try {
+    const bytes = buildResultPdf({ examName: data.examName, slip: data.slip, results: data.results || [], logo: await logoJpeg() });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    a.download = 'damiland-cbt-result-' + String(data.slip.code).toLowerCase() + '.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) { alert('Could not create the PDF. Please try “Print result slip” instead.'); }
+  btn.disabled = false;
 };
 
 /* ---------- calculator ---------- */
