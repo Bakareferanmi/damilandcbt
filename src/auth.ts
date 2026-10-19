@@ -2,7 +2,8 @@ import type { Context, Next } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { sign, verify } from 'hono/jwt';
 
-export type Bindings = { DB: D1Database; JWT_SECRET: string };
+// PASSWORD_KEY (optional) encrypts the saved student passwords. If it is not set, JWT_SECRET is used instead.
+export type Bindings = { DB: D1Database; JWT_SECRET: string; PASSWORD_KEY?: string };
 export type Session = { role: 'admin' | 'student'; id: number; exp: number };
 export type Env = { Bindings: Bindings; Variables: { session: Session; sessionId: number; currentSessionId: number; examId: number; currentExamId: number } };
 
