@@ -103,7 +103,7 @@ function draw() {
   $('rows').innerHTML = list.length ? list.map((s) => `<tr>
     <td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td>
     <td><span class="pill ${STATUS[s.status][1]}">${STATUS[s.status][0]}</span></td>
-    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button>${s.hasPassword ? `<button class="ghost" data-view="${esc(s.code)}">View password</button>` : ''}<button class="ghost" data-reset="${esc(s.code)}">Reset password</button>${s.status === 'none' ? `<button class="ghost danger" data-delete="${esc(s.code)}">Delete</button>` : `<button class="ghost danger" data-retake="${esc(s.code)}">Allow retake</button>`}</div></td></tr>`).join('')
+    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button><button class="ghost" data-view="${esc(s.code)}">View password</button><button class="ghost" data-reset="${esc(s.code)}">Reset password</button>${s.status === 'none' ? `<button class="ghost danger" data-delete="${esc(s.code)}">Delete</button>` : `<button class="ghost danger" data-retake="${esc(s.code)}">Allow retake</button>`}</div></td></tr>`).join('')
     : '<tr><td colspan="5">No students found.</td></tr>';
   document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => openEdit(b.dataset.edit));
   document.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => viewPw(b.dataset.view));
@@ -151,16 +151,21 @@ async function remove(code) {
 }
 async function viewPw(code) {
   const s = students.find((x) => x.code === code);
-  const r = await api(`/api/admin/students/${code}/password`);
-  if (!r.ok) { alert(r.data.error || 'Could not show the password.'); load(); return; }
-  showSlip(s.fullName, s.className, code, r.data.password);
+  if (s.hasPassword) {
+    const r = await api(`/api/admin/students/${code}/password`);
+    if (r.ok) return showSlip(s.fullName, s.className, code, r.data.password);
+  }
+  // Registered before passwords could be viewed (or the saved copy cannot be read): the old one cannot be recovered.
+  if (!confirm(`${s.fullName}'s current password was never saved, so it cannot be shown.\n\nCreate a new password now? The old one will stop working.`)) return;
+  await resetPw(code, true);
 }
-async function resetPw(code) {
+async function resetPw(code, confirmed) {
   const s = students.find((x) => x.code === code);
-  if (!confirm(`Give ${s.fullName} a new password? The old one will stop working.`)) return;
+  if (!confirmed && !confirm(`Give ${s.fullName} a new password? The old one will stop working.`)) return;
   const r = await api(`/api/admin/students/${code}/reset-password`, {});
   if (!r.ok) return alert(r.data.error || 'Could not reset.');
   showSlip(s.fullName, s.className, code, r.data.password);
+  load();
 }
 function openEdit(code) {
   editing = students.find((x) => x.code === code);

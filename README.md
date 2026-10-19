@@ -106,8 +106,8 @@ Domains & Routes → Add custom domain. No code changes needed.
   (AES-256-GCM) is also kept so an admin can click **View password** on the Students page when a student forgets it.
   The key comes from the Cloudflare secret `PASSWORD_KEY` (or `JWT_SECRET` if `PASSWORD_KEY` is not set), so a copy of
   the database alone cannot reveal passwords. **Do not change that secret** after students are registered, or the saved
-  passwords can no longer be read (admins can still reset them). Students registered before migration `0010` have no
-  saved password: reset it once and it becomes viewable. Admin passwords are never viewable.
+  passwords can no longer be read (admins can still reset them). For students registered before migration `0010` the old
+  password was never saved; **View password** then offers to create a new one (the old one stops working). Admin passwords are never viewable.
 - 5 wrong logins in 15 minutes locks that account **for that device/network only** for 5 minutes (so nobody else can lock a student out). Wrong guesses for codes or emails that do not exist are not stored.
 - A removed admin loses access immediately. API replies are never cached (`no-store`), and `public/_headers` adds a Content-Security-Policy and other browser protections.
 - Ending a running exam (new exam, make live, new session) asks again with the number of students still writing; the server refuses without that confirmation.
