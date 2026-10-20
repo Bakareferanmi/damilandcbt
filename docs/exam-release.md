@@ -50,7 +50,7 @@ npx wrangler preview base-config secret put JWT_SECRET
 Base secrets are copied when a preview is created. If a preview already exists, set its secret explicitly:
 
 ```sh
-npx wrangler preview secret put JWT_SECRET --name fix/exam-integrity
+npx wrangler preview secret put JWT_SECRET --name fix-exam-integrity
 ```
 
 Create a test admin in this same preview database, using your own test email and password:
