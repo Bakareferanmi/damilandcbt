@@ -24,7 +24,7 @@ built-in calculator. Scores stay hidden until the admin releases them; once rele
   card per student with a progress ring and countdown (amber under 5 min, red and pulsing under 1 min),
   an activity feed (started, halfway, 5 min left, submitted), cards/table views, sorting, and a full-screen
   mode for a projector. Refreshes every 5 s; confetti when everyone has submitted
-- **Students** – register (first + last name, class), edit, view or reset a password, allow retake, delete
+- **Students** – register (first + last name, class), edit, view or reset a password, allow an archived retake with a reason, download attempt history, delete
   (only if the student has not started), print login slips
 - **Questions** – add/edit/delete, CSV import (template in `public/questions-template.csv`),
   symbols for maths/science
@@ -51,15 +51,23 @@ the live exam's questions across). The new session starts with one exam, "Exam 1
 ```
 public/        pages (login, admin console, exam, monitor, results…) + app.css, shell.js, format.js
 src/           Worker API (Hono): index.ts, auth.ts, exam.ts, exams.ts, questions.ts, results.ts, settings.ts, limits.ts, crypto.ts
-migrations/    0001–0010 D1 migrations (run in order)
+migrations/    0001–0011 D1 migrations (run in order)
 scripts/       make-admin.mjs  (create / reset an admin)
 wrangler.jsonc Cloudflare config
 ```
 
+## Exam integrity and release checks
+
+Pending answers survive a refresh on the same browser when storage is available. Submission waits for acknowledgements, and delayed answer revisions cannot overwrite newer choices. Every chosen subject needs exactly 50 questions. **The first student start locks the entire paper, name and duration permanently**; finish all intended uploads first. Copy a paper into a new exam for changes. Retakes preserve the original sitting.
+
+Read [the release and 70-student rehearsal guide](docs/exam-release.md) before a live exam.
+
 ## Run locally (Windows / PowerShell)
 
+Use Node 24 LTS (minimum 22.13 for the SQLite regression tests).
+
 ```powershell
-npm install
+npm ci
 echo JWT_SECRET=any-long-random-text-here > .dev.vars     # never commit this file
 npx wrangler d1 migrations apply damiland-cbt --local
 node scripts/make-admin.mjs --local you@example.com "a-strong-password"
@@ -72,6 +80,8 @@ Students log in at `/`, admins at `/admin`.
 
 The GitHub repo (`Bakareferanmi/damilandcbt`) is connected to Cloudflare, so **pushing to the main
 branch deploys automatically**. You can also deploy by hand with `npx wrangler deploy`.
+
+**Migration 0011 must be applied before deploying this version.** Existing attempts and scores are retained, earlier papers are locked, score totals are backfilled, and session versions support password-reset revocation. Schedule maintenance; do not update during a sitting.
 
 First time / after any new migration, apply migrations to the live database **before** the deploy:
 
@@ -111,12 +121,12 @@ Domains & Routes → Add custom domain. No code changes needed.
 - 5 wrong logins in 15 minutes locks that account **for that device/network only** for 5 minutes (so nobody else can lock a student out). Wrong guesses for codes or emails that do not exist are not stored.
 - A removed admin loses access immediately. API replies are never cached (`no-store`), and `public/_headers` adds a Content-Security-Policy and other browser protections.
 - Ending a running exam (new exam, make live, new session) asks again with the number of students still writing; the server refuses without that confirmation.
-- Login uses an httpOnly cookie valid for 8 hours.
+- Login uses an httpOnly cookie valid for 8 hours. Password changes/resets invalidate earlier cookies. Admin password lookups are audited; retake authorisations are retained with the archive.
 - Never commit `.dev.vars`. Use a different, strong admin password on the live site.
-- Back up the database before migrations and before each new session.
+- Back up the database before migrations, sessions and exams, and again after each exam. Verify a restore into a separate database.
 
 ## Troubleshooting
 
 - **"Something went wrong on the server"** – check the terminal running `npm run dev`.
 - **`npm run dev` seems to hang** – it is the running server; leave it open.
-- **Group says "not ready"** – that subject set has fewer than 50 questions in the current session.
+- **Group says "not ready"** – each subject of the chosen group must have exactly 50 questions in the live exam.

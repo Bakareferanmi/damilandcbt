@@ -54,6 +54,8 @@ const ipOf = (c: { req: { header: (n: string) => string | undefined } }) => c.re
 
 // Show a clear message (instead of a blank "Internal Server Error") when something unexpected breaks.
 app.onError((err, c) => {
+  if (err.message.includes('EXAM_STILL_WRITING')) return c.json({ error: 'A student started while this change was being prepared. Refresh and confirm again before ending the exam.' }, 409);
+  if (err.message.includes('PAPER_LOCKED')) return c.json({ error: 'This paper is locked because a student has started. Copy it into a new exam to make changes.' }, 409);
   console.error(err);
   return c.json({ error: 'Something went wrong. Please try again. If it keeps happening, tell your teacher or the administrator.' }, 500);
 });
@@ -75,16 +77,16 @@ app.post('/api/admin/login', async (c) => {
   const wait = await lockedMinutes(c.env.DB, key);
   if (wait) return c.json({ error: lockMessage(wait) }, 429);
 
-  const admin = await c.env.DB.prepare('SELECT id, email, password_hash FROM admins WHERE email = ?')
+  const admin = await c.env.DB.prepare('SELECT id, email, password_hash, auth_version FROM admins WHERE email = ?')
     .bind(email.trim().toLowerCase())
-    .first<{ id: number; email: string; password_hash: string }>();
+    .first<{ id: number; email: string; password_hash: string; auth_version: number }>();
 
   if (!admin || !(await verifyPassword(password, admin.password_hash))) {
     if (admin) await recordFail(c.env.DB, key); // wrong guesses for emails that do not exist write nothing
     return c.json({ error: 'Email or password is not correct.' }, 401);
   }
   await clearFails(c.env.DB, key);
-  await startSession(c, 'admin', admin.id);
+  await startSession(c, 'admin', admin.id, admin.auth_version);
   return c.json({ ok: true, role: 'admin', email: admin.email });
 });
 
@@ -97,17 +99,17 @@ app.post('/api/student/login', async (c) => {
   if (wait) return c.json({ error: lockMessage(wait) }, 429);
 
   const student = await c.env.DB.prepare(
-    'SELECT id, code, full_name, class_name, password_hash FROM students WHERE code = ? AND session_id = ?',
+    'SELECT id, code, full_name, class_name, password_hash, auth_version FROM students WHERE code = ? AND session_id = ?',
   )
     .bind(code.trim().toUpperCase(), await currentSessionId(c.env.DB))
-    .first<{ id: number; code: string; full_name: string; class_name: string; password_hash: string }>();
+    .first<{ id: number; code: string; full_name: string; class_name: string; password_hash: string; auth_version: number }>();
 
   if (!student || !(await verifyPassword(password.trim().toUpperCase(), student.password_hash))) {
     if (student) await recordFail(c.env.DB, key); // codes that do not exist write nothing
     return c.json({ error: 'Student code or password is not correct.' }, 401);
   }
   await clearFails(c.env.DB, key);
-  await startSession(c, 'student', student.id);
+  await startSession(c, 'student', student.id, student.auth_version);
   return c.json({ ok: true, role: 'student', name: student.full_name, code: student.code, className: student.class_name });
 });
 
@@ -128,7 +130,7 @@ app.get('/api/me', async (c) => {
     .bind(session.id, await currentSessionId(c.env.DB))
     .first<{ code: string; full_name: string; class_name: string }>();
   return s
-    ? c.json({ role: 'student', name: s.full_name, code: s.code, className: s.class_name })
+    ? c.json({ role: 'student', studentId: session.id, name: s.full_name, code: s.code, className: s.class_name })
     : c.json({ error: 'Not logged in.' }, 401);
 });
 
@@ -136,7 +138,7 @@ app.get('/api/me', async (c) => {
 
 app.get('/api/admin/students', requireRole('admin'), scope, async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT s.code, s.full_name AS fullName, s.class_name AS className, (s.password_enc IS NOT NULL) AS hasPassword,
+    `SELECT s.code, s.full_name AS fullName, s.class_name AS className, (s.password_enc IS NOT NULL) AS hasPassword, a.id AS attemptId,
             CASE WHEN a.id IS NULL THEN 'none' WHEN a.submitted_at IS NULL THEN 'in_progress' ELSE 'submitted' END AS status
        FROM students s LEFT JOIN attempts a ON a.student_id = s.id AND a.exam_id = ? WHERE s.session_id = ? ORDER BY s.seq ASC`,
   )
@@ -166,25 +168,36 @@ app.get('/api/admin/students/:code/password', requireRole('admin'), scope, async
   if (!row) return c.json({ error: 'Student not found.' }, 404);
   const password = await decryptSecret(row.password_enc, pwKey(c.env));
   if (!password) return c.json({ error: 'This password was not saved, so it cannot be shown. Use “Reset password” to give the student a new one.' }, 404);
+  await c.env.DB.prepare('INSERT INTO audit_events (actor_id, action, target) VALUES (?, ?, ?)').bind(c.get('session').id, 'view_student_password', c.req.param('code')).run();
   return c.json({ ok: true, password });
 });
 
 // Gives a student a new password (the old one stops working). Also saved (encrypted) so an admin can view it again.
 app.post('/api/admin/students/:code/reset-password', requireRole('admin'), scope, async (c) => {
   const password = randomPassword(6);
-  const res = await c.env.DB.prepare('UPDATE students SET password_hash = ?, password_enc = ? WHERE code = ? AND session_id = ?')
+  const res = await c.env.DB.prepare('UPDATE students SET password_hash = ?, password_enc = ?, auth_version = auth_version + 1 WHERE code = ? AND session_id = ?')
     .bind(await hashPassword(password), await encryptSecret(password, pwKey(c.env)), (c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
     .run();
   return res.meta.changes ? c.json({ ok: true, password }) : c.json({ error: 'Student not found.' }, 404);
 });
 
-// Lets a student sit again: erases their attempt (answers and score) so they can start fresh.
+// Archive the original sitting before allowing a fresh attempt. The paper remains locked.
 app.post('/api/admin/students/:code/retake', requireRole('admin'), scope, liveExamOnly, async (c) => {
+  const body = await c.req.json<{ reason?: string; attemptId?: number }>().catch(() => ({} as { reason?: string; attemptId?: number }));
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+  if (reason.length < 5 || reason.length > 300) return c.json({ error: 'Give a reason for the retake (5–300 characters).' }, 400);
   const row = await c.env.DB.prepare('SELECT a.id AS attemptId FROM students s JOIN attempts a ON a.student_id = s.id AND a.exam_id = ? WHERE s.code = ? AND s.session_id = ?')
     .bind(c.get('examId'), (c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
     .first<{ attemptId: number }>();
   if (!row) return c.json({ error: 'This student has not started this exam.' }, 404);
+  if (body.attemptId !== row.attemptId) return c.json({ error: 'The attempt has changed. Refresh before granting a retake.' }, 409);
   await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO attempt_archives (student_id, exam_id, original_attempt_id, attempt_json, answers_json, scores_json, authorised_by, reason)
+      SELECT a.student_id, a.exam_id, a.id,
+        json_object('id', a.id, 'groupNo', a.group_no, 'startedAt', a.started_at, 'submittedAt', a.submitted_at, 'endsAt', a.ends_at, 'released', a.released, 'answered', a.answered),
+        (SELECT json_group_array(json_object('questionId', question_id, 'chosen', chosen, 'revision', revision)) FROM answers WHERE attempt_id = a.id),
+        (SELECT json_group_array(json_object('subjectId', subject_id, 'score', score, 'total', total)) FROM scores WHERE attempt_id = a.id), ?, ?
+      FROM attempts a WHERE a.id = ?`).bind(c.get('session').id, reason, row.attemptId),
     c.env.DB.prepare('DELETE FROM scores WHERE attempt_id = ?').bind(row.attemptId),
     c.env.DB.prepare('DELETE FROM answers WHERE attempt_id = ?').bind(row.attemptId),
     c.env.DB.prepare('DELETE FROM attempts WHERE id = ?').bind(row.attemptId),
@@ -192,15 +205,26 @@ app.post('/api/admin/students/:code/retake', requireRole('admin'), scope, liveEx
   return c.json({ ok: true });
 });
 
+// Historical attempts remain available to authorised staff after a retake.
+app.get('/api/admin/students/:code/attempt-history', requireRole('admin'), scope, async (c) => {
+  const rows = await c.env.DB.prepare(`SELECT h.original_attempt_id AS attemptId, h.attempt_json AS attempt,
+      h.answers_json AS answers, h.scores_json AS scores, h.reason, h.authorised_by AS authorisedBy, h.created_at AS archivedAt
+    FROM attempt_archives h JOIN students s ON s.id = h.student_id
+    WHERE s.code = ? AND s.session_id = ? AND h.exam_id = ? ORDER BY h.id DESC`)
+    .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'), c.get('examId'))
+    .all<{ attemptId: number; attempt: string; answers: string; scores: string; reason: string; authorisedBy: number; archivedAt: string }>();
+  return c.json({ history: rows.results.map((r) => ({ ...r, attempt: JSON.parse(r.attempt), answers: JSON.parse(r.answers), scores: JSON.parse(r.scores) })) });
+});
+
 // Deletes a student who has not started the exam (for registration mistakes).
 app.delete('/api/admin/students/:code', requireRole('admin'), scope, async (c) => {
   const res = await c.env.DB.prepare(
-    'DELETE FROM students WHERE code = ? AND session_id = ? AND NOT EXISTS (SELECT 1 FROM attempts WHERE student_id = students.id)',
+    'DELETE FROM students WHERE code = ? AND session_id = ? AND NOT EXISTS (SELECT 1 FROM attempts WHERE student_id = students.id) AND NOT EXISTS (SELECT 1 FROM attempt_archives WHERE student_id = students.id)',
   )
     .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
     .run();
   if (res.meta.changes) return c.json({ ok: true });
-  return c.json({ error: 'This student has started the exam, so they cannot be deleted. Use “Allow retake” first if you need to reset them.' }, 409);
+  return c.json({ error: 'This student has exam records and cannot be deleted. Use “Allow retake” to grant another sitting.' }, 409);
 });
 
 app.post('/api/admin/students', requireRole('admin'), scope, async (c) => {

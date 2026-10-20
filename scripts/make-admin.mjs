@@ -2,6 +2,7 @@
 //
 //   npm run admin:local  -- you@school.com "your password"     (database on your computer)
 //   npm run admin:remote -- you@school.com "your password"     (database on Cloudflare)
+//   npm run admin:preview -- you@school.com "your password"    (separate preview database)
 //
 // The password is hashed here with the same method the Worker uses, so it is never stored as plain text.
 
@@ -14,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const target = args.includes('--remote') ? '--remote' : '--local';
+const preview = args.includes('--preview');
+const database = preview ? 'PREVIEW_DB' : 'damiland-cbt';
+const configArgs = preview ? ['--config', fileURLToPath(new URL('../wrangler.preview-migrations.jsonc', import.meta.url))] : [];
 const [email, password] = args.filter((a) => !a.startsWith('--'));
 
 if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
@@ -35,7 +39,7 @@ const stored = `pbkdf2$${ITERATIONS}$${salt.toString('base64')}$${hash.toString(
 const q = (s) => `'${s.replaceAll("'", "''")}'`;
 const sql =
   `INSERT INTO admins (email, password_hash) VALUES (${q(email.trim().toLowerCase())}, ${q(stored)}) ` +
-  `ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash;`;
+  `ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, auth_version = admins.auth_version + 1;`;
 
 // Put the SQL in a temporary file (avoids Windows quoting problems) and run Wrangler with Node directly.
 const dir = mkdtempSync(join(tmpdir(), 'cbt-admin-'));
@@ -44,10 +48,10 @@ writeFileSync(file, sql);
 
 try {
   const wranglerBin = fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url));
-  execFileSync(process.execPath, [wranglerBin, 'd1', 'execute', 'damiland-cbt', target, '--file', file], {
+  execFileSync(process.execPath, [wranglerBin, 'd1', 'execute', database, target, ...configArgs, '--file', file], {
     stdio: 'inherit',
   });
-  console.log(`\nAdmin ready: ${email.trim().toLowerCase()} (${target === '--remote' ? 'Cloudflare' : 'your computer'})`);
+  console.log(`\nAdmin ready: ${email.trim().toLowerCase()} (${preview ? 'preview database, ' : ''}${target === '--remote' ? 'Cloudflare' : 'your computer'})`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

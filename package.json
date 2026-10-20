@@ -9,14 +9,22 @@
     "db:migrate:remote": "wrangler d1 migrations apply damiland-cbt --remote",
     "admin:local": "node scripts/make-admin.mjs --local",
     "admin:remote": "node scripts/make-admin.mjs --remote",
+    "admin:preview": "node scripts/make-admin.mjs --remote --preview",
+    "db:migrate:preview": "wrangler d1 migrations apply PREVIEW_DB --remote --config wrangler.preview-migrations.jsonc",
     "typecheck": "tsc --noEmit",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "test": "node --test tests/*.test.mjs",
+    "test:exam-simulation": "node --test tests/simulation.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.0.0",
+    "esbuild": "^0.28.2"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

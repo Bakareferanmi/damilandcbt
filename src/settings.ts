@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { currentExamId, currentSessionId, requireRole, VIEW_COOKIE, VIEW_EXAM_COOKIE, type Env } from './auth';
-import { closeOpenAttempts, needsConfirm, writingCount } from './exams';
+import { currentExamId, currentSessionId, requireRole, startSession, VIEW_COOKIE, VIEW_EXAM_COOKIE, type Env } from './auth';
+import { closeAttemptStatements, needsConfirm, writingCount } from './exams';
 import { hashPassword, verifyPassword } from './crypto';
 
 // Admin-only: other administrators, your own password, and academic sessions. Mounted at /api/admin.
@@ -43,7 +43,8 @@ settings.put('/password', admin, async (c) => {
   const id = c.get('session').id;
   const row = await c.env.DB.prepare('SELECT password_hash FROM admins WHERE id = ?').bind(id).first<{ password_hash: string }>();
   if (!row || !currentPassword || !(await verifyPassword(currentPassword, row.password_hash))) return c.json({ error: 'Your current password is not correct.' }, 400);
-  await c.env.DB.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').bind(await hashPassword(newPassword), id).run();
+  const updated = await c.env.DB.prepare('UPDATE admins SET password_hash = ?, auth_version = auth_version + 1 WHERE id = ? RETURNING auth_version').bind(await hashPassword(newPassword), id).first<{ auth_version: number }>();
+  await startSession(c, 'admin', id, updated!.auth_version);
   return c.json({ ok: true });
 });
 
@@ -96,9 +97,9 @@ settings.post('/sessions', admin, async (c) => {
   } catch {
     return c.json({ error: 'A session with that name already exists.' }, 409);
   }
-  await closeOpenAttempts(c.env.DB, previousExam, false);
   // The new session starts with one exam (same length as the last live exam) and it becomes the live one.
   const steps = [
+    ...(confirm ? closeAttemptStatements(c.env.DB, previousExam, false) : []),
     c.env.DB.prepare(`INSERT INTO exams (session_id, name, minutes) SELECT ?, 'Exam 1', minutes FROM exams WHERE id = ?`).bind(id, previousExam),
     c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_session_id'`).bind(String(id)),
     c.env.DB.prepare(`UPDATE settings SET value = (SELECT CAST(id AS TEXT) FROM exams WHERE session_id = ?) WHERE key = 'current_exam_id'`).bind(id),

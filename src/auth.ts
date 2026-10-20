@@ -4,16 +4,16 @@ import { sign, verify } from 'hono/jwt';
 
 // PASSWORD_KEY (optional) encrypts the saved student passwords. If it is not set, JWT_SECRET is used instead.
 export type Bindings = { DB: D1Database; JWT_SECRET: string; PASSWORD_KEY?: string };
-export type Session = { role: 'admin' | 'student'; id: number; exp: number };
+export type Session = { role: 'admin' | 'student'; id: number; exp: number; v?: number };
 export type Env = { Bindings: Bindings; Variables: { session: Session; sessionId: number; currentSessionId: number; examId: number; currentExamId: number } };
 
 const SESSION_HOURS = 8;
 export const COOKIE = 'session';
 
-export async function startSession(c: Context<Env>, role: Session['role'], id: number) {
+export async function startSession(c: Context<Env>, role: Session['role'], id: number, version = 0) {
   if (!c.env.JWT_SECRET) throw new Error('JWT_SECRET is not set. See README: create .dev.vars (local) or run `wrangler secret put JWT_SECRET` (live).');
   const exp = Math.floor(Date.now() / 1000) + SESSION_HOURS * 3600;
-  const token = await sign({ role, id, exp }, c.env.JWT_SECRET);
+  const token = await sign({ role, id, exp, v: version }, c.env.JWT_SECRET);
   setCookie(c, COOKIE, token, {
     httpOnly: true, // JavaScript on the page cannot read it
     secure: new URL(c.req.url).protocol === 'https:',
@@ -26,20 +26,22 @@ export async function startSession(c: Context<Env>, role: Session['role'], id: n
 export async function readSession(c: Context<Env>): Promise<Session | null> {
   const token = getCookie(c, COOKIE);
   if (!token || !c.env.JWT_SECRET) return null;
+  let session: Session;
   try {
-    return (await verify(token, c.env.JWT_SECRET, 'HS256')) as unknown as Session;
+    session = (await verify(token, c.env.JWT_SECRET, 'HS256')) as unknown as Session;
   } catch {
     return null;
   }
+  if (!['admin', 'student'].includes(session.role) || !Number.isSafeInteger(session.id)) return null;
+  const table = session.role === 'admin' ? 'admins' : 'students';
+  const row = await c.env.DB.prepare(`SELECT auth_version FROM ${table} WHERE id = ?`).bind(session.id).first<{ auth_version: number }>();
+  // Tokens issued before this migration have version zero and remain valid until reset.
+  return row && row.auth_version === (session.v ?? 0) ? session : null;
 }
 
 export const requireRole = (role: Session['role']) => async (c: Context<Env>, next: Next) => {
   const session = await readSession(c);
   if (!session || session.role !== role) return c.json({ error: 'Please log in first.' }, 401);
-  // A removed admin loses access straight away (the signed cookie alone would stay valid for 8 hours).
-  if (role === 'admin' && !(await c.env.DB.prepare('SELECT 1 AS x FROM admins WHERE id = ?').bind(session.id).first())) {
-    return c.json({ error: 'Please log in first.' }, 401);
-  }
   c.set('session', session);
   await next();
 };

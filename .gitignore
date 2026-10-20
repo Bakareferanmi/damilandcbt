@@ -1,6 +1,10 @@
 node_modules
 .wrangler
 .dev.vars
+backups/
+*-backup.sql
+load-accounts*.json
+*.har
 dist
 
 backup.sql*
