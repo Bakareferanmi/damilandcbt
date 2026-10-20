@@ -15,6 +15,21 @@ export const target = `session_id = 1
 const students = `SELECT id FROM students WHERE ${target}`;
 const attempts = `SELECT id FROM attempts WHERE student_id IN (${students})`;
 
+// Wrangler can write JSON errors to stdout. Preserve those errors when the
+// command fails instead of displaying a long SQL command with no explanation.
+export function invokeWrangler(cli, args, config, root, capture = false, execute = execFileSync) {
+  try {
+    return execute(process.execPath, [cli, ...args, '--config', config], {
+      cwd: root, encoding: 'utf8', stdio: capture ? ['inherit', 'pipe', 'pipe'] : 'inherit',
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch (error) {
+    const output = [error.stdout, error.stderr]
+      .map((value) => value == null ? '' : String(value).trim()).filter(Boolean).join('\n');
+    throw new Error(`Wrangler failed during ${args.slice(0, 2).join(' ')}.\n${output || `Process exited with status ${error.status ?? error.code ?? 'unknown'}.`}`);
+  }
+}
+
 export const previewSql = `SELECT
   (SELECT COUNT(*) FROM students WHERE ${target}) AS testStudents,
   (SELECT COUNT(DISTINCT full_name) FROM students WHERE ${target}) AS distinctNames,
@@ -99,13 +114,13 @@ function main() {
     name: 'damiland-cbt-cleanup',
     d1_databases: [{ binding: 'DB', database_name: 'damiland-cbt', database_id: 'f9ba1870-690b-4403-8263-4f418b14830a' }],
   }, null, 2), { mode: 0o600 });
-  const run = (args, capture = false) => execFileSync(process.execPath, [cli, ...args, '--config', config], {
-    cwd: root, encoding: 'utf8', stdio: capture ? ['inherit', 'pipe', 'inherit'] : 'inherit',
-    maxBuffer: 32 * 1024 * 1024,
-  });
+  const run = (args, capture = false) => invokeWrangler(cli, args, config, root, capture);
   const query = (sql) => {
-    const response = JSON.parse(run(['d1', 'execute', 'DB', '--remote', '--command', sql, '--json'], true));
-    if (!Array.isArray(response) || !response.length || response.some((r) => r.success === false)) throw new Error('D1 did not return a successful query result.');
+    const output = run(['d1', 'execute', 'DB', '--remote', '--command', sql, '--json'], true);
+    let response;
+    try { response = JSON.parse(output); }
+    catch { throw new Error(`D1 did not return JSON. Wrangler output:\n${output.trim()}`); }
+    if (!Array.isArray(response) || !response.length || response.some((r) => r.success === false)) throw new Error(`D1 did not return a successful query result:\n${JSON.stringify(response, null, 2)}`);
     return response.flatMap((r) => r.results ?? []);
   };
   const [before] = query(previewSql);

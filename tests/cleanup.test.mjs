@@ -2,7 +2,33 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
-import { cleanupSql, previewSql } from '../scripts/remove-loadtest-20261020.mjs';
+import { cleanupSql, previewSql, invokeWrangler } from '../scripts/remove-loadtest-20261020.mjs';
+
+test('reports the actual Wrangler error from captured stdout and stderr', () => {
+  assert.throws(() => invokeWrangler('/cli.js', ['d1', 'execute', '--command', 'SELECT 1'], '/config.json', '/project', true, () => {
+    const error = new Error('Command failed: a long command');
+    error.status = 1;
+    error.stdout = '{"error":"Account selection is required"}';
+    error.stderr = 'Select your Cloudflare account.';
+    throw error;
+  }), (error) => {
+    assert.match(error.message, /Account selection is required/);
+    assert.match(error.message, /Select your Cloudflare account/);
+    assert.doesNotMatch(error.message, /a long command/);
+    return true;
+  });
+});
+
+test('passes Wrangler arguments without a shell and returns successful query output', () => {
+  const result = invokeWrangler('C:/Program Files/cli.js', ['d1', 'execute', '--command', 'SELECT 1;'], 'C:/project/config.json', 'C:/project', true, (executable, args, options) => {
+    assert.equal(executable, process.execPath);
+    assert.deepEqual(args, ['C:/Program Files/cli.js', 'd1', 'execute', '--command', 'SELECT 1;', '--config', 'C:/project/config.json']);
+    assert.equal(options.shell, undefined);
+    assert.deepEqual(options.stdio, ['inherit', 'pipe', 'pipe']);
+    return '[{"success":true,"results":[{"ok":1}]}]';
+  });
+  assert.deepEqual(JSON.parse(result)[0].results, [{ ok: 1 }]);
+});
 
 function fixture() {
   const db = new DatabaseSync(':memory:');
