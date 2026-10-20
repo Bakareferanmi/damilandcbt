@@ -24,18 +24,17 @@ results.get('/', async (c) => {
     .bind(c.get('examId'))
     .all<{ attemptId: number; code: string; fullName: string; className: string; groupNo: number; submittedAt: string; released: number }>();
 
-  // Only the scores of THIS exam, and the question counts worked out once (not once per score row).
+  // Scores and denominators were frozen when this sitting was marked.
   const { results: sc } = await c.env.DB.prepare(
-    `SELECT sc.attempt_id AS attemptId, sub.id AS subjectId, sub.name AS subject, sc.score
+    `SELECT sc.attempt_id AS attemptId, sub.id AS subjectId, sub.name AS subject, sc.score, sc.total
        FROM scores sc JOIN attempts a ON a.id = sc.attempt_id AND a.exam_id = ?
        JOIN subjects sub ON sub.id = sc.subject_id ORDER BY (sub.id = 'eng') DESC, sub.rowid`,
   )
     .bind(c.get('examId'))
-    .all<{ attemptId: number; subjectId: string; subject: string; score: number }>();
-  const perSubject = await questionCounts(c.env.DB, c.get('examId'));
+    .all<{ attemptId: number; subjectId: string; subject: string; score: number; total: number }>();
 
   const out = rows.map(({ attemptId, ...r }) => {
-    const scores = sc.filter((x) => x.attemptId === attemptId).map((x) => ({ subject: x.subject, score: x.score, total: perSubject.get(x.subjectId) ?? 0 }));
+    const scores = sc.filter((x) => x.attemptId === attemptId).map((x) => ({ subject: x.subject, score: x.score, total: x.total }));
     return { ...r, released: !!r.released, scores, total: scores.reduce((n, x) => n + x.score, 0), outOf: scores.reduce((n, x) => n + x.total, 0) };
   });
   return c.json({ results: out });

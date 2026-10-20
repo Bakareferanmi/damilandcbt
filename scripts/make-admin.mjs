@@ -35,7 +35,7 @@ const stored = `pbkdf2$${ITERATIONS}$${salt.toString('base64')}$${hash.toString(
 const q = (s) => `'${s.replaceAll("'", "''")}'`;
 const sql =
   `INSERT INTO admins (email, password_hash) VALUES (${q(email.trim().toLowerCase())}, ${q(stored)}) ` +
-  `ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash;`;
+  `ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, auth_version = admins.auth_version + 1;`;
 
 // Put the SQL in a temporary file (avoids Windows quoting problems) and run Wrangler with Node directly.
 const dir = mkdtempSync(join(tmpdir(), 'cbt-admin-'));

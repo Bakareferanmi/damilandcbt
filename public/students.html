@@ -103,8 +103,9 @@ function draw() {
   $('rows').innerHTML = list.length ? list.map((s) => `<tr>
     <td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td>
     <td><span class="pill ${STATUS[s.status][1]}">${STATUS[s.status][0]}</span></td>
-    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button>${s.hasPassword ? `<button class="ghost" data-view="${esc(s.code)}">View password</button>` : ''}<button class="ghost" data-reset="${esc(s.code)}">Reset password</button>${s.status === 'none' ? `<button class="ghost danger" data-delete="${esc(s.code)}">Delete</button>` : `<button class="ghost danger" data-retake="${esc(s.code)}">Allow retake</button>`}</div></td></tr>`).join('')
+    <td><div class="row"><button class="ghost" data-edit="${esc(s.code)}">Edit</button><button class="ghost" data-history="${esc(s.code)}">Attempt history</button>${s.hasPassword ? `<button class="ghost" data-view="${esc(s.code)}">View password</button>` : ''}<button class="ghost" data-reset="${esc(s.code)}">Reset password</button>${s.status === 'none' ? `<button class="ghost danger" data-delete="${esc(s.code)}">Delete</button>` : `<button class="ghost danger" data-retake="${esc(s.code)}">Allow retake</button>`}</div></td></tr>`).join('')
     : '<tr><td colspan="5">No students found.</td></tr>';
+  document.querySelectorAll('[data-history]').forEach((b) => b.onclick = () => history(b.dataset.history));
   document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => openEdit(b.dataset.edit));
   document.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => viewPw(b.dataset.view));
   document.querySelectorAll('[data-reset]').forEach((b) => b.onclick = () => resetPw(b.dataset.reset));
@@ -137,10 +138,22 @@ $('reg').onsubmit = async (e) => {
 };
 async function retake(code) {
   const s = students.find((x) => x.code === code);
-  if (!confirm(`Allow ${s.fullName} to sit the exam again?\n\nTheir current answers and score will be erased and cannot be recovered.`)) return;
-  const r = await api(`/api/admin/students/${code}/retake`, {});
+  if (!confirm(`Allow ${s.fullName} to sit the exam again?\n\nTheir current sitting will be archived, including answers and scores. A fresh sitting will be allowed.`)) return;
+  const reason = prompt('Reason for this retake (5–300 characters):');
+  if (reason === null) return;
+  const r = await api(`/api/admin/students/${code}/retake`, { reason, attemptId: s.attemptId });
   if (!r.ok) return alert(r.data.error || 'Could not reset the exam.');
   load();
+}
+async function history(code) {
+  const r = await api(`/api/admin/students/${code}/attempt-history`);
+  if (!r.ok) return alert(r.data.error || 'Could not load history.');
+  if (!r.data.history.length) return alert('No archived retakes for this student in this exam.');
+  const summary = r.data.history.map((h) => `Attempt ${h.attemptId} · archived ${h.archivedAt} UTC\nReason: ${h.reason}\nScore: ${h.scores.length ? h.scores.reduce((n, x) => n + x.score, 0) + ' / ' + h.scores.reduce((n, x) => n + x.total, 0) : 'Not marked at retake'}\n${h.answers.length} saved answers`).join('\n\n');
+  if (!confirm(summary + '\n\nDownload the full history, including saved answers, as JSON?')) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(r.data.history, null, 2)], { type: 'application/json' }));
+  a.download = 'attempt-history-' + code + '.json'; a.click(); URL.revokeObjectURL(a.href);
 }
 async function remove(code) {
   const s = students.find((x) => x.code === code);

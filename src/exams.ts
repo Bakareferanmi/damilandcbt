@@ -11,21 +11,17 @@ const SUBJECTS_OF = `(SELECT id FROM subjects WHERE id = 'eng' OR id IN (SELECT 
 
 // Marks and submits attempts that are still open. With onlyExpired, only those whose time has run out
 // (students who closed the page); otherwise every open attempt (used when another exam goes live).
-export async function closeOpenAttempts(db: D1Database, examId: number, onlyExpired: boolean) {
+export function closeAttemptStatements(db: D1Database, examId: number, onlyExpired: boolean) {
   // The time limit is worked out here (not inside the SQL) so the index (exam_id, submitted_at, ends_at)
   // can answer "is anything expired?" without reading the attempts themselves.
   const cond = (t: string) => `${t}.exam_id = ?1 AND ${t}.submitted_at IS NULL` + (onlyExpired ? ` AND ${t}.ends_at < ?2` : '');
   const binds: unknown[] = onlyExpired ? [examId, Math.floor(Date.now() / 1000) - GRACE_SECONDS] : [examId];
 
-  // The Monitor calls this on every refresh and usually nothing has expired: one cheap look, then stop.
-  const any = await db.prepare(`SELECT 1 AS x FROM attempts a WHERE ${cond('a')} LIMIT 1`).bind(...binds).first();
-  if (!any) return;
-
-  await db.batch([
+  return [
     // Marks each student in one pass over their answers (see finalize in exam.ts).
     db.prepare(
-      `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score)
-       SELECT a.id, s.id, COALESCE(t.n, 0)
+      `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score, total)
+       SELECT a.id, s.id, COALESCE(t.n, 0), (SELECT COUNT(*) FROM questions q WHERE q.exam_id = a.exam_id AND q.subject_id = s.id)
          FROM attempts a JOIN subjects s ON s.id IN ${SUBJECTS_OF}
          LEFT JOIN (SELECT w.attempt_id AS aid, q.subject_id AS sid, COUNT(*) AS n
                       FROM answers w JOIN questions q ON q.id = w.question_id
@@ -34,7 +30,15 @@ export async function closeOpenAttempts(db: D1Database, examId: number, onlyExpi
         WHERE ${cond('a')}`,
     ).bind(...binds),
     db.prepare(`UPDATE attempts AS a SET submitted_at = datetime('now') WHERE ${cond('a')}`).bind(...binds),
-  ]);
+  ];
+}
+
+
+export async function closeOpenAttempts(db: D1Database, examId: number, onlyExpired: boolean) {
+  const expired = onlyExpired ? ' AND ends_at < ?2' : '';
+  const args = onlyExpired ? [examId, Math.floor(Date.now() / 1000) - GRACE_SECONDS] : [examId];
+  const any = await db.prepare(`SELECT 1 FROM attempts WHERE exam_id = ?1 AND submitted_at IS NULL${expired} LIMIT 1`).bind(...args).first();
+  if (any) await db.batch(closeAttemptStatements(db, examId, onlyExpired));
 }
 
 // How many students are still writing this exam right now.
@@ -63,7 +67,7 @@ const admin = requireRole('admin');
 // Exams of the session being viewed.
 exams.get('/', admin, scope, async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT e.id, e.name, e.minutes,
+    `SELECT e.id, e.name, e.minutes, e.locked_at AS lockedAt,
             (SELECT COUNT(*) FROM attempts a WHERE a.exam_id = e.id) AS attempts,
             (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS questions
        FROM exams e WHERE e.session_id = ? ORDER BY e.id DESC`,
@@ -103,11 +107,11 @@ exams.post('/', admin, scope, async (c) => {
   try {
     const row = await c.env.DB.prepare('INSERT INTO exams (session_id, name, minutes) VALUES (?, ?, ?) RETURNING id').bind(sid, name, minutes).first<{ id: number }>();
     id = row!.id;
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && !err.message.includes('UNIQUE')) throw err;
     return c.json({ error: 'This session already has an exam with that name.' }, 409);
   }
-  await closeOpenAttempts(c.env.DB, previous, false);
-  const steps = [c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_exam_id'`).bind(String(id))];
+  const steps = [...(b.confirm ? closeAttemptStatements(c.env.DB, previous, false) : []), c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_exam_id'`).bind(String(id))];
   if (copyFrom) {
     steps.push(
       c.env.DB.prepare(
@@ -121,7 +125,7 @@ exams.post('/', admin, scope, async (c) => {
   return c.json({ ok: true, id, name }, 201);
 });
 
-// Rename an exam / change its length (the length applies to students who start after the change).
+// Rename an unused paper / change its length. The database rejects changes once locked.
 exams.put('/:id', admin, scope, async (c) => {
   const id = Number(c.req.param('id'));
   const b = await c.req.json<{ name?: string; minutes?: number }>().catch(() => ({}) as { name?: string; minutes?: number });
@@ -131,7 +135,8 @@ exams.put('/:id', admin, scope, async (c) => {
   try {
     const res = await c.env.DB.prepare('UPDATE exams SET name = ?, minutes = ? WHERE id = ? AND session_id = ?').bind(name, minutes, id, c.get('sessionId')).run();
     return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Exam not found.' }, 404);
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && !err.message.includes('UNIQUE')) throw err;
     return c.json({ error: 'This session already has an exam with that name.' }, 409);
   }
 });
@@ -145,8 +150,10 @@ exams.post('/:id/make-live', admin, scope, async (c) => {
     const writing = await writingCount(c.env.DB, c.get('currentExamId'));
     const body = await c.req.json<{ confirm?: boolean }>().catch(() => ({}) as { confirm?: boolean });
     if (writing && !body.confirm) return c.json(needsConfirm(writing), 409);
-    await closeOpenAttempts(c.env.DB, c.get('currentExamId'), false);
-    await c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_exam_id'`).bind(String(id)).run();
+    await c.env.DB.batch([
+      ...(body.confirm ? closeAttemptStatements(c.env.DB, c.get('currentExamId'), false) : []),
+      c.env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'current_exam_id'`).bind(String(id)),
+    ]);
   }
   setView(c, id);
   return c.json({ ok: true });

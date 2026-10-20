@@ -60,8 +60,8 @@ async function finalize(db: D1Database, attemptId: number) {
     // Marks in ONE pass over the student's answers (it used to re-read all of them once per subject).
     // A subject with no right answers still gets a row, with 0.
     db.prepare(
-      `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score)
-       SELECT a.id, s.id, COALESCE(t.n, 0)
+      `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score, total)
+       SELECT a.id, s.id, COALESCE(t.n, 0), (SELECT COUNT(*) FROM questions q WHERE q.exam_id = a.exam_id AND q.subject_id = s.id)
          FROM attempts a JOIN subjects s ON s.id IN ${SUBJECTS_OF}
          LEFT JOIN (SELECT q.subject_id AS sid, COUNT(*) AS n
                       FROM answers w JOIN questions q ON q.id = w.question_id
@@ -72,15 +72,15 @@ async function finalize(db: D1Database, attemptId: number) {
   ]);
 }
 
-async function results(db: D1Database, attemptId: number, examId: number) {
+async function results(db: D1Database, attemptId: number) {
   const { results: rows } = await db
     .prepare(
       `SELECT s.name AS subject, sc.score AS score,
-              (SELECT COUNT(*) FROM questions q WHERE q.subject_id = s.id AND q.exam_id = ?) AS total
+              sc.total AS total
          FROM scores sc JOIN subjects s ON s.id = sc.subject_id
         WHERE sc.attempt_id = ? ORDER BY (s.id = 'eng') DESC, s.rowid`,
     )
-    .bind(examId, attemptId)
+    .bind(attemptId)
     .all<{ subject: string; score: number; total: number }>();
   return rows;
 }
@@ -95,7 +95,7 @@ exam.get('/', async (c) => {
   if (!attempt) {
     const me = await db.prepare('SELECT class_name FROM students WHERE id = ?').bind(studentId).first<{ class_name: string }>();
     return c.json({
-      status: 'none',
+      status: 'none', examId, attemptId: null,
       examName: info.name,
       minutes: info.minutes,
       recommended: RECOMMENDED[me?.class_name ?? ''] ?? [],
@@ -109,16 +109,19 @@ exam.get('/', async (c) => {
   }
 
   if (attempt.submitted_at) {
-    // Scores stay hidden until an admin releases them.
-    if (!attempt.released) return c.json({ status: 'submitted', examName: info.name, released: false });
+    const saved = await db.prepare('SELECT question_id AS q, chosen, revision FROM answers WHERE attempt_id = ?').bind(attempt.id).all<{ q: number; chosen: string; revision: number }>();
+    const qs = await db.prepare(`SELECT q.id FROM questions q WHERE q.exam_id = ? AND (q.subject_id = 'eng' OR q.subject_id IN (SELECT subject_id FROM group_subjects WHERE group_no = ?))`).bind(examId, attempt.group_no).all<{ id: number }>();
+    const identity = { questionIds: qs.results.map((q) => q.id), examId, attemptId: attempt.id, answers: Object.fromEntries(saved.results.map((x) => [x.q, x.chosen])), answerRevisions: Object.fromEntries(saved.results.map((x) => [x.q, x.revision])) };
+    // Saved choices let the browser reconcile pending work even if a submit response was lost.
+    if (!attempt.released) return c.json({ ...identity, status: 'submitted', examName: info.name, released: false });
     // Everything the printable result slip needs (same details as the admin's slip).
     const [rows, me, ses] = await Promise.all([
-      results(db, attempt.id, examId),
+      results(db, attempt.id),
       db.prepare('SELECT code, full_name AS fullName, class_name AS className FROM students WHERE id = ?').bind(studentId).first<{ code: string; fullName: string; className: string }>(),
       db.prepare('SELECT name FROM sessions WHERE id = ?').bind(c.get('sessionId')).first<{ name: string }>(),
     ]);
     return c.json({
-      status: 'submitted', examName: info.name, released: true, results: rows,
+      ...identity, status: 'submitted', examName: info.name, released: true, results: rows,
       slip: { ...me, groupNo: attempt.group_no, submittedAt: attempt.submitted_at, sessionName: ses?.name ?? '' },
     });
   }
@@ -140,12 +143,12 @@ exam.get('/', async (c) => {
     .bind(examId, ...subs.map((s) => s.id))
     .all<{ id: number; subjectId: string; body: string; a: string; b: string; c: string; d: string }>();
   const { results: ans } = await db
-    .prepare('SELECT question_id AS q, chosen FROM answers WHERE attempt_id = ?')
+    .prepare('SELECT question_id AS q, chosen, revision FROM answers WHERE attempt_id = ?')
     .bind(attempt.id)
-    .all<{ q: number; chosen: string }>();
+    .all<{ q: number; chosen: string; revision: number }>();
 
   return c.json({
-    status: 'in_progress',
+    status: 'in_progress', examId, attemptId: attempt.id,
     examName: info.name,
     secondsLeft: Math.max(0, attempt.ends_at - nowSec()),
     // Every student gets their own question order. It is fixed for that student (refreshing does not reshuffle).
@@ -157,36 +160,43 @@ exam.get('/', async (c) => {
         .map(({ subjectId, ...q }) => q),
     })),
     answers: Object.fromEntries(ans.map((x) => [x.q, x.chosen])),
+    answerRevisions: Object.fromEntries(ans.map((x) => [x.q, x.revision])),
   });
 });
 
 exam.post('/start', async (c) => {
   const studentId = c.get('session').id;
-  const { groupNo } = await c.req.json<{ groupNo?: number }>().catch(() => ({}) as { groupNo?: number });
+  const { groupNo, examId: expectedExamId } = await c.req.json<{ groupNo?: number; examId?: number }>().catch(() => ({} as { groupNo?: number; examId?: number }));
   const group = Number(groupNo);
   if (!GROUPS[group]) return c.json({ error: 'Choose your subject group.' }, 400);
   const examId = c.get('examId');
   if (await attemptOf(c.env.DB, studentId, examId)) return c.json({ error: 'You have already started your exam.' }, 409);
 
-  // Every subject must have questions, otherwise the exam is not ready.
+  if (expectedExamId !== examId) return c.json({ error: 'The live exam has changed. Refresh before starting.', attemptChanged: true }, 409);
+
+  // Exactly 50 per subject. A trigger repeats this check atomically with the INSERT.
   const empty = await c.env.DB
     .prepare(
       `SELECT s.name FROM subjects s
         WHERE (s.id = 'eng' OR s.id IN (SELECT subject_id FROM group_subjects WHERE group_no = ?))
-          AND NOT EXISTS (SELECT 1 FROM questions q WHERE q.subject_id = s.id AND q.exam_id = ?)`,
+          AND (SELECT COUNT(*) FROM questions q WHERE q.subject_id = s.id AND q.exam_id = ?) <> 50`,
     )
     .bind(group, examId)
     .all<{ name: string }>();
   if (empty.results.length) {
-    return c.json({ error: `The exam is not ready yet (no questions for ${empty.results.map((r) => r.name).join(', ')}). Please tell your teacher.` }, 409);
+    return c.json({ error: `The exam is not ready yet (each subject needs exactly 50 questions: ${empty.results.map((r) => r.name).join(', ')}). Please tell your teacher.` }, 409);
   }
 
   try {
     await c.env.DB.prepare('INSERT INTO attempts (student_id, exam_id, group_no, ends_at) VALUES (?, ?, ?, ?)')
       .bind(studentId, examId, group, nowSec() + (await examInfo(c.env.DB, examId)).minutes * 60)
       .run();
-  } catch {
-    return c.json({ error: 'You have already started your exam.' }, 409); // unique index: only one sitting per student
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '';
+    if (message.includes('EXAM_NOT_READY')) return c.json({ error: 'The exam is not ready. Each subject needs exactly 50 questions.' }, 409);
+    if (message.includes('EXAM_CHANGED')) return c.json({ error: 'The live exam has changed. Refresh before starting.', attemptChanged: true }, 409);
+    if (message.includes('UNIQUE')) return c.json({ error: 'You have already started your exam.' }, 409);
+    throw err;
   }
   return c.json({ ok: true }, 201);
 });
@@ -194,11 +204,12 @@ exam.post('/start', async (c) => {
 // Saves one answer as soon as the student picks it.
 exam.put('/answer', async (c) => {
   const studentId = c.get('session').id;
-  const { questionId, chosen } = await c.req.json<{ questionId?: number; chosen?: string }>().catch(() => ({}) as { questionId?: number; chosen?: string });
-  if (!Number.isInteger(questionId) || !['A', 'B', 'C', 'D'].includes(String(chosen))) return c.json({ error: 'Invalid answer.' }, 400);
+  const body = await c.req.json<{ questionId?: number; chosen?: string; attemptId?: number; revision?: number }>().catch(() => ({} as { questionId?: number; chosen?: string; attemptId?: number; revision?: number }));
+  const { questionId, chosen, revision } = body;
+  if (!Number.isSafeInteger(questionId) || !['A', 'B', 'C', 'D'].includes(String(chosen)) || !Number.isSafeInteger(revision) || revision! < 1) return c.json({ error: 'Invalid answer. Refresh the exam page if it was open before an update.' }, 400);
 
   const attempt = await attemptOf(c.env.DB, studentId, c.get('examId'));
-  if (!attempt) return c.json({ error: 'Start your exam first.' }, 409);
+  if (!attempt || body.attemptId !== attempt.id) return c.json({ error: 'This attempt has changed. Refresh before continuing.', attemptChanged: true }, 409);
   if (attempt.submitted_at) return c.json({ error: 'Your exam has been submitted.', finished: true }, 409);
 
   // One atomic batch: (1) add the answer if it is new, (2) if it WAS new, add 1 to the attempt's running count,
@@ -210,35 +221,35 @@ exam.put('/answer', async (c) => {
   const inMySubjects = `(q.subject_id = 'eng' OR EXISTS (SELECT 1 FROM group_subjects g WHERE g.group_no = a.group_no AND g.subject_id = q.subject_id))`;
   const [ins, , upd] = await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT OR IGNORE INTO answers (attempt_id, question_id, chosen)
-       SELECT a.id, q.id, ?3 FROM attempts a JOIN questions q ON q.id = ?2
+      `INSERT OR IGNORE INTO answers (attempt_id, question_id, chosen, revision)
+       SELECT a.id, q.id, ?3, ?6 FROM attempts a JOIN questions q ON q.id = ?2
         WHERE ${valid} AND ${inMySubjects} AND q.exam_id = ?5`,
-    ).bind(attempt.id, questionId, chosen, now, examId),
+    ).bind(attempt.id, questionId, chosen, now, examId, revision),
     c.env.DB.prepare(`UPDATE attempts SET answered = answered + 1 WHERE id = ?1 AND changes() = 1`).bind(attempt.id),
     c.env.DB.prepare(
-      `UPDATE answers SET chosen = ?3 WHERE attempt_id = ?1 AND question_id = ?2 AND chosen <> ?3
+      `UPDATE answers SET chosen = ?3, revision = ?5 WHERE attempt_id = ?1 AND question_id = ?2 AND revision < ?5
           AND EXISTS (SELECT 1 FROM attempts a WHERE ${valid})`,
-    ).bind(attempt.id, questionId, chosen, now),
+    ).bind(attempt.id, questionId, chosen, now, revision),
   ]);
 
-  if (!ins.meta.changes && !upd.meta.changes) {
-    // Nothing changed: either the same answer was sent again (fine), or the answer is not allowed.
-    const same = await c.env.DB.prepare('SELECT 1 AS x FROM answers WHERE attempt_id = ? AND question_id = ? AND chosen = ?').bind(attempt.id, questionId, chosen).first();
-    if (same && nowSec() <= attempt.ends_at + GRACE_SECONDS) return c.json({ ok: true });
-    if (nowSec() > attempt.ends_at + GRACE_SECONDS) {
-      await finalize(c.env.DB, attempt.id);
-      return c.json({ error: 'Time is up. Your exam has been submitted.', finished: true }, 409);
-    }
-    return c.json({ error: 'That question is not in your exam.' }, 400);
+  const saved = await c.env.DB.prepare('SELECT chosen, revision FROM answers WHERE attempt_id = ? AND question_id = ?').bind(attempt.id, questionId).first<{ chosen: string; revision: number }>();
+  if (ins.meta.changes || upd.meta.changes || (saved && saved.chosen === chosen && saved.revision === revision)) {
+    return c.json({ ok: true, chosen: saved?.chosen, revision: saved?.revision });
   }
-  return c.json({ ok: true });
+  if (nowSec() > attempt.ends_at + GRACE_SECONDS) {
+    await finalize(c.env.DB, attempt.id);
+    return c.json({ error: 'Time is up. Only answers received before the deadline and grace period were accepted.', finished: true }, 409);
+  }
+  if (saved) return c.json({ error: 'This answer changed in another request. Refresh the page to reconcile your answers.', conflict: true }, 409);
+  return c.json({ error: 'That question is not in your exam.' }, 400);
 });
 
 exam.post('/submit', async (c) => {
+  const body = await c.req.json<{ attemptId?: number }>().catch(() => ({} as { attemptId?: number }));
   const attempt = await attemptOf(c.env.DB, c.get('session').id, c.get('examId'));
-  if (!attempt) return c.json({ error: 'Start your exam first.' }, 409);
+  if (!attempt || body.attemptId !== attempt.id) return c.json({ error: 'This attempt has changed. Refresh before continuing.', attemptChanged: true }, 409);
   await finalize(c.env.DB, attempt.id);
-  return c.json({ ok: true });
+  return c.json({ ok: true, attemptId: attempt.id });
 });
 
 export default exam;

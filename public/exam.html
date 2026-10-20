@@ -217,16 +217,43 @@
   <div class="row"><button class="ghost" id="c-no">Keep answering</button><button class="primary" id="c-yes">Yes, submit</button></div>
 </dialog>
 
-<script>
+<script type="module">
+import { AnswerQueue } from "/answer-queue.js";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-let me = null, data = null, subj = 0, qi = 0, answers = {}, deadline = 0, tick = null, chosenGroup = null;
+let me = null, data = null, subj = 0, qi = 0, answers = {}, deadline = 0, tick = null, chosenGroup = null, queue = null, failures = 0, retryTimer = null, finishing = false, submitFails = 0;
 
 async function api(path, body, method) {
-  const res = await fetch(path, { method: method || (body ? 'POST' : 'GET'), headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  const d = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, data: d };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(path, { signal: controller.signal, cache: 'no-store', method: method || (body ? 'POST' : 'GET'), headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+    const d = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: d };
+  } finally { clearTimeout(timeout); }
 }
+function makeQueue() {
+  let storage;
+  try { storage = localStorage; } catch { storage = { getItem() { throw Error(); }, setItem() { throw Error(); }, removeItem() { throw Error(); } }; }
+  queue = new AnswerQueue({
+    key: `damiland:pending:${me.studentId}:${data.attemptId}`, storage,
+    answers: data.answers, revisions: data.answerRevisions,
+    allowed: data.subjects ? data.subjects.flatMap((s) => s.questions.map((q) => q.id)) : data.questionIds || [],
+    send: async (questionId, chosen, revision) => {
+      const r = await api('/api/student/exam/answer', { attemptId: data.attemptId, questionId, chosen, revision }, 'PUT');
+      if (!r.ok) {
+        const err = new Error(r.data.error || 'Could not save.');
+        err.finished = !!r.data.finished;
+        err.terminal = r.status === 401 || !!(r.data.finished || r.data.attemptChanged || r.data.conflict);
+        throw err;
+      }
+      return r.data;
+    },
+    onChange: () => { if (queue) paintSave(); },
+  });
+  answers = queue.answers;
+}
+
 function view(name) { ['gate', 'start', 'exam', 'done'].forEach((v) => $(v).hidden = v !== name); }
 document.querySelectorAll('[data-logout]').forEach((b) => b.onclick = async () => { await api('/api/logout', {}); location.href = '/'; });
 
@@ -240,7 +267,7 @@ async function boot() {
   if (!r.ok) return view('gate');
   data = r.data;
   if (data.status === 'none') return showStart();
-  if (data.status === 'submitted') return showDone();
+  if (data.status === 'submitted') { makeQueue(); return showDone(); }
   startExam();
 }
 
@@ -261,33 +288,40 @@ function showStart() {
   $('rules').innerHTML = [
     `You have <b>${data.minutes} minutes</b> for all four subjects. The timer cannot be paused.`,
     'Each question has four options, A to D. Tap one to answer. You can change it any time before you submit.',
-    'Your answers are saved as you go. If your connection drops, come back and log in again: the timer keeps running.',
+    'Wait for “Saved” to confirm your choices reached the server. Pending choices are kept on this browser when storage is available.',
+    'During a connection failure the timer keeps running. Reconnect before time is up. Choices received more than 10 seconds late cannot be accepted.',
     'When time is up, your exam is submitted automatically.',
     'You can only take the exam once.',
   ].map((t) => `<li>${t}</li>`).join('');
 }
 $('begin').onclick = async () => {
   $('begin').disabled = true;
-  const r = await api('/api/student/exam/start', { groupNo: chosenGroup });
-  if (!r.ok && r.status !== 409) { $('begin').disabled = false; return note($('start-msg'), r.data.error || 'Could not start.'); }
-  if (!r.ok && /not ready/i.test(r.data.error || '')) { $('begin').disabled = false; return note($('start-msg'), r.data.error); }
-  data = (await api('/api/student/exam')).data;
-  data.status === 'in_progress' ? startExam() : showDone();
+  try {
+    const r = await api('/api/student/exam/start', { groupNo: chosenGroup, examId: data.examId });
+    if (!r.ok && !/already started/i.test(r.data.error || '')) return note($('start-msg'), r.data.error || 'Could not start.');
+    const fresh = await api('/api/student/exam');
+    if (!fresh.ok) return note($('start-msg'), fresh.data.error || 'Could not load the exam. Refresh to resume.');
+    data = fresh.data;
+    if (data.status === 'in_progress') startExam();
+    else if (data.status === 'submitted') { makeQueue(); showDone(); }
+    else note($('start-msg'), 'The exam has changed. Refresh before starting.');
+  } catch { note($('start-msg'), 'Could not connect. Check your connection, then retry or refresh. An exam already started will resume.'); }
+  finally { $('begin').disabled = false; }
 };
 function note(el, t) { el.textContent = t; el.hidden = !t; }
 
 /* ---------- exam ---------- */
 function startExam() {
   view('exam');
-  answers = { ...data.answers };
-  sent = { ...data.answers }; inflight = new Set(); fails = 0;
+  makeQueue(); failures = 0;
   subj = 0; qi = 0;
   deadline = performance.now() + data.secondsLeft * 1000;
   clearInterval(tick); tick = setInterval(updateTimer, 500); updateTimer();
   const sci = me.className === 'SS3 Science';
   $('calc').hidden = !sci;
   $('layout').classList.toggle('has-calc', sci);
-  renderTabs(); renderQ();
+  renderTabs(); renderQ(); paintSave();
+  if (queue.count) flush();
 }
 function updateTimer() {
   const s = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
@@ -331,47 +365,60 @@ function go(d) {
 $('next').onclick = () => go(1);
 $('prev').onclick = () => go(-1);
 
-// Saving: one request per question at a time (so an older click can never land after a newer one),
-// waits that grow when the network is bad (so 50 phones do not hammer the server together), and it never gives up.
-let sent = {}, inflight = new Set(), fails = 0, retryTimer = null;
-const unsaved = () => Object.keys(answers).filter((id) => sent[id] !== answers[id]);
+// The queue serialises revisions, persists pending choices and bounds reconnect traffic.
 function paintSave() {
-  const el = $('saved'), n = unsaved().length;
-  el.className = n && fails ? 'saved bad' : 'saved';
-  el.textContent = !n ? 'Saved ✓' : fails ? (navigator.onLine ? 'Not saved yet. Trying again…' : 'No connection. Your answers will save when it returns.') : 'Saving…';
+  if (!queue) return;
+  const el = $('saved'), n = queue.count;
+  el.className = n || queue.storageError || queue.terminal ? 'saved bad' : 'saved';
+  el.textContent = queue.terminal ? queue.terminal.message : n
+    ? `${n} answer${n === 1 ? '' : 's'} not saved yet. ${failures ? 'Waiting for the connection…' : 'Saving…'}`
+    : 'Saved ✓';
+  if (queue.storageError) el.textContent += ' Browser recovery storage is unavailable. Keep this page open and tell your invigilator.';
+  if (queue.conflicts) el.textContent += ' Answers changed in another tab. The latest server versions are shown.';
 }
-async function choose(L) {
-  const q = cur().questions[qi];
-  answers[q.id] = L;
-  renderQ(); renderTabs();
-  flush();
-}
-async function sendOne(id) {
-  if (inflight.has(id)) return true; // it will notice the newer choice when it finishes
-  inflight.add(id);
-  const L = answers[id];
-  try {
-    const r = await api('/api/student/exam/answer', { questionId: Number(id), chosen: L }, 'PUT');
-    if (r.data.finished) { finish(true); return true; }
-    if (!r.ok) throw new Error();
-    sent[id] = L;
-    return true;
-  } catch { return false; }
-  finally { inflight.delete(id); }
+function choose(L) {
+  if (finishing || performance.now() >= deadline || queue?.terminal) return;
+  queue.choose(cur().questions[qi].id, L);
+  renderQ(); renderTabs(); flush();
 }
 async function flush() {
   clearTimeout(retryTimer);
+  if (finishing || !queue || queue.terminal) return;
+  try { await queue.flush(); failures = 0; }
+  catch (err) {
+    failures++;
+    if (err.finished) { finish(true); return; }
+  }
   paintSave();
-  const todo = unsaved().filter((id) => !inflight.has(id));
-  const ok = await Promise.all(todo.map(sendOne));
-  if (ok.every(Boolean)) fails = 0; else fails++;
-  paintSave();
-  if (unsaved().length && !finishing) {
-    const wait = ok.every(Boolean) ? 0 : Math.min(15000, 1500 * 2 ** Math.min(fails, 4)) * (0.7 + Math.random() * 0.6);
-    retryTimer = setTimeout(flush, wait);
+  if (queue.count && !finishing && !queue.terminal) {
+    retryTimer = setTimeout(flush, Math.min(15000, 1500 * 2 ** Math.min(failures, 4)) * (0.7 + Math.random() * 0.6));
   }
 }
-addEventListener('online', () => { if (unsaved().length) { fails = 0; flush(); } });
+addEventListener('online', () => { if (queue?.count) flush(); });
+// Resynchronise after a sleeping device/tab resumes. The displayed clock must not
+// grant extra time if performance.now() was suspended by the operating system.
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || data?.status !== 'in_progress' || finishing) return;
+  try {
+    const r = await api('/api/student/exam');
+    if (!r.ok || finishing || data?.status !== 'in_progress') return;
+    if (r.data.attemptId !== data.attemptId) {
+      queue.terminal = new Error('This attempt has changed. Refresh before continuing.');
+      paintSave(); return;
+    }
+    if (r.data.status === 'submitted') {
+      clearInterval(tick); clearTimeout(retryTimer);
+      data = r.data; makeQueue(); showDone(); return;
+    }
+    if (r.data.status === 'in_progress') {
+      deadline = performance.now() + r.data.secondsLeft * 1000;
+      updateTimer();
+    }
+  } catch { /* The server still enforces the deadline if this refresh fails. */ }
+});
+addEventListener('beforeunload', (e) => {
+  if (queue?.count && data?.status === 'in_progress') { e.preventDefault(); e.returnValue = ''; }
+});
 document.addEventListener('keydown', (e) => {
   if ($('exam').hidden || $('confirm').open || e.target.closest('#calc')) return;
   const k = e.key.toUpperCase();
@@ -390,39 +437,57 @@ function askSubmit() {
 $('submit-btn').onclick = askSubmit;
 $('c-no').onclick = () => $('confirm').close();
 $('c-yes').onclick = () => { $('confirm').close(); finish(false); };
-let finishing = false, submitFails = 0;
 async function finish(auto) {
   if (finishing) return;
   finishing = true;
   clearInterval(tick); clearTimeout(retryTimer);
-  await Promise.all(unsaved().map(sendOne)); // one last try to send anything not saved yet
-  const r = await api('/api/student/exam/submit', {});
-  if (!r.ok) {
-    finishing = false; submitFails++;
-    $('saved').className = 'saved bad';
-    if (auto || performance.now() >= deadline) {
-      // Time is up: keep trying on our own, with growing waits (never twice a second).
-      $('saved').textContent = 'Time is up. Submitting… (waiting for the connection)';
-      setTimeout(() => finish(true), Math.min(15000, 1000 * 2 ** Math.min(submitFails, 4)) * (0.7 + Math.random() * 0.6));
-    } else {
-      $('saved').textContent = 'Could not submit. Check your connection and press Submit again.';
-      tick = setInterval(updateTimer, 500);
+  $('submit-btn').disabled = true;
+  try {
+    try { await queue.flush(); }
+    catch (err) {
+      // A voluntary submit cannot silently discard pending choices. At expiry only
+      // previously accepted answers can be marked; the outbox remains for review.
+      if (!err.finished && (!auto && performance.now() < deadline || err.terminal && !err.finished)) throw err;
     }
-    return;
+    const r = await api('/api/student/exam/submit', { attemptId: data.attemptId });
+    if (!r.ok) {
+      const err = new Error(r.data.error || 'Could not submit.');
+      err.terminal = r.status === 401 || !!r.data.attemptChanged;
+      throw err;
+    }
+    const fresh = await api('/api/student/exam');
+    if (!fresh.ok || fresh.data.attemptId !== data.attemptId || fresh.data.status !== 'submitted') throw new Error('Submission confirmation unavailable. Retry or refresh this page.');
+    data = fresh.data;
+    makeQueue(); // Reconcile acknowledgements when a save/submit response was lost.
+    showDone();
+  } catch (err) {
+    submitFails++;
+    $('saved').className = 'saved bad';
+    $('saved').textContent = err.message + ' Your pending choices remain on this device.';
+    if (err.terminal) { queue.terminal = err; return; }
+    if (auto || performance.now() >= deadline) {
+      retryTimer = setTimeout(() => finish(true), Math.min(15000, 1000 * 2 ** Math.min(submitFails, 4)) * (0.7 + Math.random() * 0.6));
+    } else {
+      tick = setInterval(updateTimer, 500);
+      retryTimer = setTimeout(flush, 3000);
+    }
+  } finally {
+    finishing = false;
+    $('submit-btn').disabled = !!queue?.terminal;
   }
-  data = (await api('/api/student/exam')).data;
-  showDone();
 }
+
 function showDone() {
   view('done');
   if (data.examName) $('done-title').textContent = data.examName + ' submitted';
+  const summary = queue?.count ? `Exam submitted. ${queue.count} choices on this device were not confirmed before submission. Tell your invigilator and keep this page open.` : 'Exam submitted. Your saved answers have been recorded.';
   if (!data.released) {
-    $('done-text').textContent = 'Well done. Your answers have been saved. Your scores will be available once your school releases the results. Check back later.';
+    $('done-text').textContent = summary + ' Your scores will be available once your school releases the results.';
     $('scores').innerHTML = '';
     $('slip-actions').hidden = true;
     return;
   }
-  $('done-text').textContent = 'Well done. Your answers have been saved. Here are your scores.';
+  $('done-text').textContent = summary + ' Here are your scores.';
   const rows = data.results || [];
   const sum = rows.reduce((a, r) => a + r.score, 0), tot = rows.reduce((a, r) => a + r.total, 0);
   $('scores').innerHTML = rows.map((r) => `<div class="score"><span>${esc(r.subject)}</span><b>${r.score} / ${r.total}</b></div>`).join('') +
@@ -497,7 +562,7 @@ $('slip-csv').onclick = () => {
   $('keys').onclick = (e) => { const b = e.target.closest('button'); if (b) press(b.dataset.k); };
 })();
 
-boot();
+boot().catch(() => { view('gate'); $('gate').querySelector('p').textContent = 'Could not connect. Check your connection and refresh. Pending choices remain on this device.'; });
 </script>
 </body>
 </html>

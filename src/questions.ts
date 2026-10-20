@@ -29,6 +29,13 @@ function check(input: { body?: unknown; a?: unknown; b?: unknown; c?: unknown; d
 
 const questions = new Hono<Env>();
 questions.use('*', requireRole('admin'), scope, liveExamOnly);
+questions.use('*', async (c, next) => {
+  if (c.req.method !== 'GET') {
+    const paper = await c.env.DB.prepare('SELECT locked_at FROM exams WHERE id = ?').bind(c.get('examId')).first<{ locked_at: string | null }>();
+    if (paper?.locked_at) return c.json({ error: 'This paper is locked because a student has started. Copy it into a new exam to make changes.' }, 409);
+  }
+  await next();
+});
 
 // Every subject with how many questions it has (for the "n / 50" progress bars).
 questions.get('/subjects', async (c) => {
@@ -39,7 +46,8 @@ questions.get('/subjects', async (c) => {
   )
     .bind(c.get('examId'))
     .all();
-  return c.json({ subjects: results, max: MAX_PER_SUBJECT });
+  const paper = await c.env.DB.prepare('SELECT locked_at FROM exams WHERE id = ?').bind(c.get('examId')).first<{ locked_at: string | null }>();
+  return c.json({ subjects: results, max: MAX_PER_SUBJECT, locked: !!paper?.locked_at });
 });
 
 // Questions of one subject.
@@ -124,6 +132,7 @@ questions.post('/import', async (c) => {
   const skipped: { row: number; reason: string }[] = [];
   const statements: D1PreparedStatement[] = [];
   const addedBySubject: Record<string, number> = {};
+  const statementSubjects: string[] = [];
 
   rows.forEach((r, i) => {
     const rowNo = r.row ?? i + 2;
@@ -134,17 +143,24 @@ questions.post('/import', async (c) => {
     if (subject.count >= MAX_PER_SUBJECT) return skipped.push({ row: rowNo, reason: `${subject.name} already has ${MAX_PER_SUBJECT} questions.` });
 
     subject.count++;
-    addedBySubject[subject.name] = (addedBySubject[subject.name] ?? 0) + 1;
+    statementSubjects.push(subject.name);
     const v = checked.v;
     statements.push(
       c.env.DB.prepare(
-        'INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
+          WHERE (SELECT COUNT(*) FROM questions WHERE subject_id = ?1 AND exam_id = ?9) < ${MAX_PER_SUBJECT}`,
       ).bind(subject.id, v.body, v.a, v.b, v.c, v.d, v.correct, c.get('sessionId'), c.get('examId')),
     );
   });
 
-  if (statements.length) await c.env.DB.batch(statements); // all saved together, or none
-  return c.json({ ok: true, added: statements.length, addedBySubject, skipped });
+  const saved = statements.length ? await c.env.DB.batch(statements) : [];
+  const added = saved.reduce((n, x, i) => {
+    if (x.meta.changes) addedBySubject[statementSubjects[i]] = (addedBySubject[statementSubjects[i]] ?? 0) + x.meta.changes;
+    return n + x.meta.changes;
+  }, 0);
+  return c.json({ ok: true, added, addedBySubject, skipped,
+    warning: added < statements.length ? 'Another upload filled some subjects. Refresh the question counts before uploading more.' : undefined });
 });
 
 export default questions;
