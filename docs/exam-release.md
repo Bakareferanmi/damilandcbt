@@ -29,6 +29,42 @@ The regression suite executes the actual API against an isolated SQLite adapter 
 
 ## Approved release sequence
 
+### Branch preview setup
+
+The production binding remains `damiland-cbt`. Branch previews use the separate `damiland-cbt-preview` database configured under `previews.d1_databases`. All branch previews using that ID share the test data; use synthetic records only.
+
+Before testing the preview, initialise its database from the PR branch:
+
+```sh
+npm run db:migrate:preview
+```
+
+This command targets only database `11bd3e91-0ff7-4f70-b29f-2187fe1255f5`. It applies all pending migrations, including 0011. The migration-only configuration deliberately uses the binding `PREVIEW_DB` to distinguish this target from production's `DB`.
+
+Set a fresh preview-only login secret through **Worker → Settings → Variables and secrets → Previews Base**, named `JWT_SECRET`. Alternatively, from the project directory use the interactive CLI prompt:
+
+```sh
+npx wrangler preview base-config secret put JWT_SECRET
+```
+
+Base secrets are copied when a preview is created. If a preview already exists, set its secret explicitly:
+
+```sh
+npx wrangler preview secret put JWT_SECRET --name fix/exam-integrity
+```
+
+Create a test admin in this same preview database, using your own test email and password:
+
+```sh
+npm run admin:preview -- tester@example.com "your-test-password"
+```
+
+Keep secrets out of Git and chat. Retry the non-production build, then log in as the test admin to create synthetic students and questions for the rehearsal. The preview database starts without accounts, questions or real student records. A green preview build alone does not establish that migrations, secrets or an exam rehearsal are complete.
+
+Configuration references: [Preview resources and D1 migrations](https://developers.cloudflare.com/workers/previews/resources/) and [Preview secrets](https://developers.cloudflare.com/workers/previews/configuration/#secrets).
+
+### Production release
+
 Do not merge or deploy this change during a sitting. Main automatically deploys through the existing Cloudflare integration. Review the PR and schedule a maintenance window first.
 
 1. Record the current production Worker version. Export the production database and retain the SQL file in two restricted locations, one outside Cloudflare. Record a D1 Time Travel bookmark too.

@@ -20,5 +20,16 @@
     }
   ],
 
+  // All branch previews use this separate testing database.
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "damiland-cbt-preview",
+        "database_id": "11bd3e91-0ff7-4f70-b29f-2187fe1255f5"
+      }
+    ]
+  },
+
   "observability": { "enabled": true }
 }
