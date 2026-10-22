@@ -37,7 +37,7 @@
   #slips { display:none }
   .rs { font-family:'Poppins',system-ui,sans-serif; color:#000; padding:8mm 4mm; display:flex; flex-direction:column; gap:20px }
   .rs .head { display:flex; align-items:center; gap:16px; padding-bottom:16px; border-bottom:3px solid #01309F }
-  .rs .head img { width:64px; height:64px; object-fit:contain }
+  .rs .head img { width:80px; height:88px; flex-shrink:0; object-fit:contain }
   .rs .head b { display:block; font-size:24px; line-height:32px; color:#01309F }
   .rs .head span { font-size:14px; color:#333 }
   .rs .head .ses { margin-left:auto; text-align:right; font-weight:600; font-size:16px }
@@ -120,7 +120,7 @@ function slipHtml(x) {
   const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 + '%' : '–';
   const date = x.submittedAt ? new Date(x.submittedAt.replace(' ', 'T') + 'Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   return `<section class="rs">
-    <div class="head"><img src="/logo.png" alt=""><div><b>Damiland CBT</b><span>Computer-Based Test</span></div><div class="ses">${esc(examNameTxt)}<br>Session ${esc(sessionName)}</div></div>
+    <div class="head"><img src="/school-crest.png" alt="Damiland High School crest" width="80" height="88"><div><b>Damiland CBT</b><span>Computer-Based Test</span></div><div class="ses">${esc(examNameTxt)}<br>Session ${esc(sessionName)}</div></div>
     <h2>Examination result slip</h2>
     <dl><dt>Name</dt><dd>${esc(x.fullName)}</dd><dt>Student code</dt><dd>${esc(x.code)}</dd><dt>Class</dt><dd>${esc(x.className)}</dd><dt>Subject group</dt><dd>Group ${x.groupNo}</dd>${date ? `<dt>Date of exam</dt><dd>${esc(date)}</dd>` : ''}</dl>
     <table><thead><tr><th>Subject</th><th class="n">Score</th><th class="n">Out of</th><th class="n">Percent</th></tr></thead><tbody>
