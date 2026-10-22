@@ -114,8 +114,10 @@
   .rs th { background:#E8EEFC; -webkit-print-color-adjust:exact; print-color-adjust:exact }
   .rs td.n, .rs th.n { text-align:right }
   .rs tr.tot td { font-weight:700; background:#F4F6FC; -webkit-print-color-adjust:exact; print-color-adjust:exact }
-  .rs .sign { display:flex; justify-content:space-between; gap:32px; margin-top:48px; font-size:14px }
-  .rs .sign div { flex:1; border-top:1px solid #000; padding-top:8px; text-align:center }
+  .rs .sign { display:flex; justify-content:space-between; gap:32px; margin-top:24px; font-size:14px; break-inside:avoid }
+  .rs .sign > div { flex:1; display:flex; flex-direction:column; align-items:center; text-align:center }
+  .rs .sign img { display:block; width:180px; max-width:100%; height:76px; object-fit:contain; margin-bottom:8px }
+  .rs .sign span { display:block; width:100%; border-top:1px solid #000; padding-top:8px }
   .rs .foot { margin-top:auto; font-size:12px; color:#555; text-align:center }
   @page { size:A4; margin:14mm }
   @media print {
@@ -509,18 +511,26 @@ function slipHtml() {
       ${rows.map((r) => `<tr><td>${esc(r.subject)}</td><td class="n">${r.score}</td><td class="n">${r.total}</td><td class="n">${pctOf(r.score, r.total)}</td></tr>`).join('')}
       <tr class="tot"><td>Total</td><td class="n">${sum}</td><td class="n">${tot}</td><td class="n">${pctOf(sum, tot)}</td></tr>
     </tbody></table>
-    <div class="sign"><div>Exam officer</div><div>Principal</div></div>
+    <div class="sign"><div><img src="/signatures/gm.png" alt="G.M signature" width="180" height="76"><span>G.M</span></div><div><img src="/signatures/principal.png" alt="Principal signature" width="180" height="76"><span>Principal</span></div></div>
     <div class="foot">Printed on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
   </section>`;
 }
-$('slip-print').onclick = () => {
+$('slip-print').onclick = async () => {
+  if (document.getElementById('slips')) return;
   if (!data || !data.slip) return;
   const box = document.createElement('div');
   box.id = 'slips'; box.innerHTML = slipHtml();
   document.body.appendChild(box);
+  try {
+    await Promise.all(Array.from(box.querySelectorAll('img'), (img) => img.decode()));
+  } catch {
+    box.remove();
+    alert('The result slip images could not load. Check your connection and try printing again.');
+    return;
+  }
   document.body.classList.add('printing');
   window.addEventListener('afterprint', () => { document.body.classList.remove('printing'); box.remove(); }, { once: true });
-  setTimeout(() => window.print(), 100);
+  requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
 };
 $('slip-csv').onclick = () => {
   if (!data || !data.slip) return;
