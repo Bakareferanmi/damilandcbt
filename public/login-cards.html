@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student login cards · Damiland CBT</title>
+<link rel="icon" href="/logo.png"><link rel="stylesheet" href="/app.css">
+<style>
+body { margin:0; font-family:Arial,sans-serif; color:#111; background:#f4f6fc }
+.controls { padding:24px; background:#fff; border:1px solid #cbd3e8; border-radius:12px; margin-bottom:24px }
+h1 { font-size:24px; margin:0 0 12px } .controls p { line-height:1.5 }
+.actions { display:flex; align-items:end; gap:12px; flex-wrap:wrap }
+label { display:flex; flex-direction:column; gap:8px } select, button { min-height:44px; padding:8px 14px; font:inherit }
+button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status { white-space:pre-line }
+#sheets { overflow:auto } .card-sheet { width:190mm; height:276mm; padding:0; margin:0 auto 20px; background:#fff; box-sizing:border-box; color:#111 }
+.sheet-heading { height:12mm; display:flex; align-items:center; justify-content:space-between; font-size:10pt; font-weight:bold; padding:0 2mm }
+.card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(4,63mm); gap:3mm }
+.login-card { border:1px dashed #555; padding:4mm; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; min-width:0 }
+.login-card header { font-size:11pt; font-weight:bold; display:flex; justify-content:space-between; gap:3mm; border-bottom:1px solid #aaa; padding-bottom:2mm }
+.login-card header span { font-size:8pt; font-weight:normal; text-align:right }
+.login-card h2 { font-size:12pt; line-height:1.2; margin:2mm 0 1mm; overflow-wrap:anywhere }
+.login-card .class-name { font-size:9pt; margin:0 0 2mm }
+.login-card dl { margin:0 } .login-card dl div { display:grid; grid-template-columns:25mm 1fr; align-items:baseline; gap:2mm; margin-bottom:1mm }
+.login-card dt { font-size:9pt } .login-card dd { margin:0; font: bold 11pt monospace; overflow-wrap:anywhere }
+.login-card footer { margin-top:auto; font-size:8pt; line-height:1.35; overflow-wrap:anywhere }
+@page { size:A4 portrait; margin:10mm }
+@media print {
+ body { background:white; padding:0!important; margin:0!important }
+ body > :not(#sheets) { display:none!important }
+ #sheets { display:block!important; overflow:visible }
+ .card-sheet { margin:0; break-after:page; page-break-after:always; break-inside:avoid }
+ .card-sheet:last-child { break-after:auto; page-break-after:auto }
+ .login-card { break-inside:avoid }
+}
+</style>
+</head>
+<body>
+<div class="controls">
+<h1>Print student login cards</h1>
+<p>Choose one class section at a time. Each A4 sheet holds eight cards: two columns and four rows.</p>
+<p>Use A4 portrait, 100% scale, and turn off browser headers and footers in the print settings.</p>
+<div class="actions">
+<label>Class section<select id="section"><option value="">Choose a section</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select></label>
+<button id="prepare" disabled>Prepare cards</button><button id="print" disabled>Print this section</button><button id="clear">Clear preview</button><a href="/students">Back to students</a>
+</div>
+<p id="status" role="status" aria-live="polite">Choose a section to begin.</p>
+</div>
+<div id="sheets"></div>
+<script type="module">
+import { cardSheets, loadCardPasswords } from '/login-cards.js';
+const $ = id => document.getElementById(id);
+let generation = 0, busy = false;
+function clear() { generation++; $('sheets').replaceChildren(); $('print').disabled = true; $('status').textContent = 'Preview cleared. Choose a section and prepare cards.'; }
+$('clear').onclick = clear;
+$('section').onchange = () => { clear(); $('prepare').disabled = busy || !$('section').value; };
+$('prepare').onclick = async () => {
+  clear(); const current = generation, section = $('section').value;
+  if (!section || busy) return;
+  busy = true; $('prepare').disabled = true; $('section').disabled = true;
+  $('status').textContent = 'Loading student details and saved passwords…';
+  try {
+    const [studentsResponse, sessionResponse] = await Promise.all([fetch('/api/admin/students', {cache:'no-store'}), fetch('/api/me', {cache:'no-store'})]);
+    if (!studentsResponse.ok || !sessionResponse.ok) throw Error('Please sign in as an admin and try again.');
+    const details = await studentsResponse.json(), me = await sessionResponse.json();
+    if (me.role !== 'admin') throw Error('Only admins can prepare login cards.');
+    const selected = details.students.filter(s => s.className === section);
+    if (!selected.length) throw Error('There are no students in this section for the selected session.');
+    const result = await loadCardPasswords(selected, async code => {
+      const r = await fetch('/api/admin/students/' + encodeURIComponent(code) + '/password', {cache:'no-store'});
+      return {status:r.status,ok:r.ok,data:await r.json()};
+    });
+    if (generation !== current) return;
+    if (result.missing.length) {
+      $('status').textContent = 'Cards are not ready. Saved passwords are unavailable for: ' + result.missing.map(s=>s.fullName+' ('+s.code+')').join(', ') + '. Open Students and reset those passwords individually if appropriate, then prepare again. No passwords have been changed.';
+      return;
+    }
+    // The session name comes from the same admin session selection used by Students.
+    const sessionsResponse = await fetch('/api/admin/sessions', {cache:'no-store'});
+    if (!sessionsResponse.ok) throw Error('Could not load the selected session. Please retry.');
+    const sessions = await sessionsResponse.json();
+    const session = sessions.sessions.find(s=>s.id === sessions.viewing)?.name;
+    if (!session) throw Error('Could not identify the selected session. Please reload and try again.');
+    if (generation !== current) return;
+    $('sheets').innerHTML = cardSheets(result.cards, {section,session,website:location.origin});
+    $('print').disabled = false;
+    $('status').textContent = section + ': ' + result.cards.length + ' cards on ' + Math.ceil(result.cards.length/8) + ' A4 sheet(s). Review the preview, then print. Only this section will print.';
+  } catch (error) { if (generation === current) { $('sheets').replaceChildren(); $('print').disabled=true; $('status').textContent=error.message || 'Could not prepare cards.'; } }
+  finally { busy=false; $('section').disabled=false; $('prepare').disabled=!$('section').value; }
+};
+let sheetParent = null, sheetNext = null;
+addEventListener('beforeprint', () => {
+  const sheets = $('sheets'); sheetParent = sheets.parentNode; sheetNext = sheets.nextSibling;
+  document.body.appendChild(sheets);
+});
+addEventListener('afterprint', () => {
+  if (sheetParent) sheetParent.insertBefore($('sheets'), sheetNext);
+  sheetParent = null; sheetNext = null;
+});
+$('print').onclick = () => { if (!$('print').disabled) window.print(); };
+addEventListener('pagehide',clear);
+</script>
+<script src="/shell.js" data-page="students" data-title="Student login cards"></script>
+</body>
+</html>
