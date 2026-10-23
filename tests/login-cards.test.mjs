@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cardSheets,loadCardPasswords} from '../public/login-cards.js';
 const students = Array.from({length:17},(_,i)=>({fullName:'Student '+i,className:'SS3 Science',code:'TEST'+i,password:'PASS'+i}));
-test('A4 sheets contain eight cards each with a final partial sheet',()=>{
+test('A4 sheets contain fourteen cards each with a final partial sheet',()=>{
  const html=cardSheets(students,{section:'SS3 Science',session:'2026/2027',website:'https://school.test'});
  const pages=html.split('<section class="card-sheet">').slice(1);
- assert.equal(pages.length,3);assert.deepEqual(pages.map(p=>(p.match(/<article /g)||[]).length),[8,8,1]);
+ assert.equal(pages.length,2);assert.deepEqual(pages.map(p=>(p.match(/<article /g)||[]).length),[14,3]);
  for(const s of students){assert.ok(html.includes(s.code));assert.ok(html.includes(s.password));}
- assert.ok(html.includes('Sheet 3 of 3'));
+ assert.ok(html.includes('Sheet 2 of 2'));
  assert.equal(cardSheets([],{section:'Science'}),'');
 });
 test('card text is escaped including names, passwords and website',()=>{
@@ -41,11 +41,11 @@ test('print password retrieval remains admin-only, uncached and audited', async 
 
 import {existsSync} from 'node:fs';
 test('each card includes the school crest and both existing signature assets',()=>{
- const html=cardSheets(students.slice(0,8),{section:'SS3 Science',session:'2026/2027',website:'https://school.test'});
+ const html=cardSheets(students.slice(0,14),{section:'SS3 Science',session:'2026/2027',website:'https://school.test'});
  for(const asset of ['school-crest.png','signatures/gm.png','signatures/principal.png']) {
   assert.ok(existsSync('public/'+asset));
-  assert.equal(html.split('src="/'+asset+'"').length-1,8);
+  assert.equal(html.split('src="/'+asset+'"').length-1,14);
  }
- assert.equal((html.match(/<span>G.M<\/span>/g)||[]).length,8);
- assert.equal((html.match(/<span>Principal<\/span>/g)||[]).length,8);
+ assert.equal((html.match(/<span>G.M<\/span>/g)||[]).length,14);
+ assert.equal((html.match(/<span>Principal<\/span>/g)||[]).length,14);
 });
