@@ -38,3 +38,14 @@ test('print password retrieval remains admin-only, uncached and audited', async 
  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM audit_events WHERE action='view_student_password'").get().n,1);
  assert.equal((await f.request('/api/admin/students/TEST1/password')).status,401);
 });
+
+import {existsSync} from 'node:fs';
+test('each card includes the school crest and both existing signature assets',()=>{
+ const html=cardSheets(students.slice(0,8),{section:'SS3 Science',session:'2026/2027',website:'https://school.test'});
+ for(const asset of ['school-crest.png','signatures/gm.png','signatures/principal.png']) {
+  assert.ok(existsSync('public/'+asset));
+  assert.equal(html.split('src="/'+asset+'"').length-1,8);
+ }
+ assert.equal((html.match(/<span>G.M<\/span>/g)||[]).length,8);
+ assert.equal((html.match(/<span>Principal<\/span>/g)||[]).length,8);
+});

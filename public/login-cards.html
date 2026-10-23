@@ -15,13 +15,18 @@ button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status
 .sheet-heading { height:12mm; display:flex; align-items:center; justify-content:space-between; font-size:10pt; font-weight:bold; padding:0 2mm }
 .card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(4,63mm); gap:3mm }
 .login-card { border:1px dashed #555; padding:4mm; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; min-width:0 }
-.login-card header { font-size:11pt; font-weight:bold; display:flex; justify-content:space-between; gap:3mm; border-bottom:1px solid #aaa; padding-bottom:2mm }
+.login-card header { font-size:10pt; font-weight:bold; display:flex; align-items:center; justify-content:space-between; gap:2mm; border-bottom:1px solid #aaa; padding-bottom:1mm }
+.school-crest { width:9mm; height:9mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
+.card-signatures { display:flex; justify-content:space-between; gap:8mm; margin-top:auto; padding-top:1mm }
+.card-signatures div { width:30mm; text-align:center; display:flex; flex-direction:column; align-items:center }
+.card-signatures img { width:24mm; height:6mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
+.card-signatures span { width:100%; border-top:1px solid #777; font-size:7pt; padding-top:.5mm }
 .login-card header span { font-size:8pt; font-weight:normal; text-align:right }
 .login-card h2 { font-size:12pt; line-height:1.2; margin:2mm 0 1mm; overflow-wrap:anywhere }
 .login-card .class-name { font-size:9pt; margin:0 0 2mm }
 .login-card dl { margin:0 } .login-card dl div { display:grid; grid-template-columns:25mm 1fr; align-items:baseline; gap:2mm; margin-bottom:1mm }
 .login-card dt { font-size:9pt } .login-card dd { margin:0; font: bold 11pt monospace; overflow-wrap:anywhere }
-.login-card footer { margin-top:auto; font-size:8pt; line-height:1.35; overflow-wrap:anywhere }
+.login-card footer { margin-top:1mm; font-size:7pt; line-height:1.2; overflow-wrap:anywhere }
 @page { size:A4 portrait; margin:10mm }
 @media print {
  body { background:white; padding:0!important; margin:0!important }
@@ -81,6 +86,9 @@ $('prepare').onclick = async () => {
     if (!session) throw Error('Could not identify the selected session. Please reload and try again.');
     if (generation !== current) return;
     $('sheets').innerHTML = cardSheets(result.cards, {section,session,website:location.origin});
+    const images = [...$('sheets').querySelectorAll('img')];
+    await Promise.all(images.map(image => image.decode()));
+    if (generation !== current) return;
     $('print').disabled = false;
     $('status').textContent = section + ': ' + result.cards.length + ' cards on ' + Math.ceil(result.cards.length/8) + ' A4 sheet(s). Review the preview, then print. Only this section will print.';
   } catch (error) { if (generation === current) { $('sheets').replaceChildren(); $('print').disabled=true; $('status').textContent=error.message || 'Could not prepare cards.'; } }
