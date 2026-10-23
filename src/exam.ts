@@ -244,6 +244,22 @@ exam.put('/answer', async (c) => {
   return c.json({ error: 'That question is not in your exam.' }, 400);
 });
 
+// Browser-reported tab departures are review flags, never proof of cheating.
+exam.post('/focus-event', async (c) => {
+  const b = await c.req.json<{ attemptId?: number; eventId?: string; occurredAt?: number }>().catch(() => ({} as { attemptId?: number; eventId?: string; occurredAt?: number }));
+  if (typeof b.eventId !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(b.eventId) || !Number.isSafeInteger(b.occurredAt) || b.occurredAt! < 0 || b.occurredAt! > nowSec() + 60) return c.json({ error: 'Invalid focus event.' }, 400);
+  const a = await attemptOf(c.env.DB, c.get('session').id, c.get('examId'));
+  if (!a || b.attemptId !== a.id) return c.json({ error: 'This attempt has changed.' }, 409);
+  // Late delivery is allowed for offline events, only with a time inside this sitting.
+  await c.env.DB.prepare(`INSERT OR IGNORE INTO exam_focus_events (attempt_id, event_id, occurred_at)
+    SELECT id, ?2, ?3 FROM attempts WHERE id = ?1
+      AND ?3 >= CAST(strftime('%s', started_at) AS INTEGER) AND ?3 <= ends_at
+      AND (submitted_at IS NULL OR ?3 <= CAST(strftime('%s', submitted_at) AS INTEGER))
+      AND (SELECT COUNT(*) FROM exam_focus_events WHERE attempt_id = ?1) < 500`)
+    .bind(a.id, b.eventId, b.occurredAt).run();
+  return c.json({ ok: true });
+});
+
 exam.post('/submit', async (c) => {
   const body = await c.req.json<{ attemptId?: number }>().catch(() => ({} as { attemptId?: number }));
   const attempt = await attemptOf(c.env.DB, c.get('session').id, c.get('examId'));
