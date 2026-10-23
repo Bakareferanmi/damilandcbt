@@ -158,6 +158,7 @@
 
 <!-- Exam screen -->
 <div id="exam" hidden>
+  <p id="focus-warning" class="msg" role="status">Tab changes and minimising this page are reported to your teacher for review. Stay on this page during the exam.</p>
   <div class="bar"><div class="in">
     <img src="/logo.png" alt="">
     <div class="who"><b class="nm"></b><span class="cl"></span></div>
@@ -221,6 +222,7 @@
 
 <script type="module">
 import { AnswerQueue } from "/answer-queue.js";
+import { FocusTracker } from "/focus-tracker.js";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 let me = null, data = null, subj = 0, qi = 0, answers = {}, deadline = 0, tick = null, chosenGroup = null, queue = null, failures = 0, retryTimer = null, finishing = false, submitFails = 0;
@@ -293,6 +295,7 @@ function showStart() {
     'Wait for “Saved” to confirm your choices reached the server. Pending choices are kept on this browser when storage is available.',
     'During a connection failure the timer keeps running. Reconnect before time is up. Choices received more than 10 seconds late cannot be accepted.',
     'When time is up, your exam is submitted automatically.',
+    'Leaving this exam tab or minimising the browser is recorded and shown to your teacher. Flags are reviewed; they do not automatically fail you.',
     'You can only take the exam once.',
   ].map((t) => `<li>${t}</li>`).join('');
 }
@@ -313,7 +316,28 @@ $('begin').onclick = async () => {
 function note(el, t) { el.textContent = t; el.hidden = !t; }
 
 /* ---------- exam ---------- */
+let focusTracker = null;
+function trackFocus() {
+  if (focusTracker || !data?.attemptId) return;
+  const attemptId = data.attemptId;
+  focusTracker = new FocusTracker({
+    storage: { getItem: k => localStorage.getItem(k), setItem: (k,v) => localStorage.setItem(k,v) },
+    key: 'cbt-focus-' + me.code + '-' + attemptId,
+    send: async event => (await fetch('/api/student/exam/focus-event', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ ...event, attemptId })
+    })).status
+  });
+  focusTracker.change(document.hidden, data.status === 'in_progress');
+}
+addEventListener('online', () => focusTracker?.flush());
+setInterval(() => focusTracker?.flush(), 15000);
+document.addEventListener('visibilitychange', () => {
+  focusTracker?.change(document.hidden, data?.status === 'in_progress' && !finishing);
+  if (!document.hidden && focusTracker?.pending.length) $('focus-warning').textContent = 'You left the exam page. This has been recorded for your teacher to review. Continue your exam.';
+});
 function startExam() {
+  trackFocus();
   view('exam');
   makeQueue(); failures = 0;
   subj = 0; qi = 0;
@@ -480,6 +504,7 @@ async function finish(auto) {
 }
 
 function showDone() {
+  trackFocus();
   view('done');
   if (data.examName) $('done-title').textContent = data.examName + ' submitted';
   const summary = queue?.count ? `Exam submitted. ${queue.count} choices on this device were not confirmed before submission. Tell your invigilator and keep this page open.` : 'Exam submitted. Your saved answers have been recorded.';

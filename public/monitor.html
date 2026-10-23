@@ -220,6 +220,8 @@
       </section>
       <aside class="card feed" aria-label="Activity">
         <h2>Activity</h2>
+        <p id="focus-summary" role="status" aria-live="polite"></p>
+        <p class="small">Tab departures are browser-reported review flags, not proof of cheating. Updates appear on the next successful refresh (normally within 5 seconds).</p>
         <ul class="events" id="events"><li class="none">Nothing yet. Events appear here as students start, submit or run low on time.</li></ul>
       </aside>
     </div>
@@ -263,6 +265,7 @@ function diff(next) {
     for (const s of next) {
       const o = old.get(s.code); if (!o) continue;
       const name = `<b>${esc(s.fullName)}</b>`;
+      if (s.tabSwitches > (o.attemptId === s.attemptId ? o.tabSwitches || 0 : 0)) say('bad', `${name} left the exam tab. ${s.tabSwitches} departure(s) recorded; review with the student.`);
       if (o.status === 'none' && s.status !== 'none') say('', `${name} started (Group ${s.groupNo})`);
       if (o.status !== 'submitted' && s.status === 'submitted') say('ok', `${name} submitted, ${s.answered}/${s.total} answered`);
       if (s.status === 'in_progress' && o.status === 'in_progress' && s.total) {
@@ -285,6 +288,8 @@ async function load() {
     fetchedAt = Date.now();
     diff(d.students);
     students = d.students;
+    const flagged = students.filter(s => s.tabSwitches > 0);
+    $('focus-summary').textContent = flagged.length ? `${flagged.length} student(s) flagged for tab departures. ${students.reduce((n,s)=>n+(s.tabSwitches || 0),0)} departure(s) recorded.` : 'No tab departures reported.';
     draw();
   } catch { loadFailed = true; setUpd(); }
 }
@@ -345,7 +350,7 @@ function cardHtml(s) {
   return `<div class="top"><div class="av"><svg viewBox="0 0 56 56"><circle class="trk" cx="28" cy="28" r="${R}"/><circle class="arc" cx="28" cy="28" r="${R}" stroke-dasharray="${CIRC}" stroke-dashoffset="${CIRC}"/></svg><span></span></div>
     <div class="who"><b></b><span class="sub"></span></div></div>
     <div class="mini"><i style="width:0"></i></div>
-    <div class="meta"><span class="cnt"></span><span class="time" hidden></span></div>`;
+    <div class="meta"><span class="cnt"></span><span class="focus-flag" style="color:var(--bad)"></span><span class="time" hidden></span></div>`;
 }
 
 function updateCard(el, s) {
@@ -359,6 +364,7 @@ function updateCard(el, s) {
   el.querySelector('.sub').textContent = `${s.code} · ${s.className.replace('SS3 ', '')}${s.groupNo ? ' · G' + s.groupNo : ''}`;
   el.querySelector('.mini i').style.width = (s.status === 'none' ? 0 : pct * 100) + '%';
   el.querySelector('.cnt').textContent = s.status === 'none' ? 'Not started' : `${s.answered}/${s.total} answered`;
+  el.querySelector('.focus-flag').textContent = s.tabSwitches ? `⚠ ${s.tabSwitches} tab departure(s). Last: ${new Date(s.lastTabSwitch * 1000).toLocaleTimeString('en-GB')}` : '';
   const t = el.querySelector('.time');
   if (s.status === 'in_progress' && left !== null) { t.hidden = false; t.dataset.left = s.secondsLeft; t.className = 'time ' + u; t.textContent = left === 0 ? 'Time up' : mmss(left); }
   else if (s.status === 'submitted') { t.hidden = false; t.removeAttribute('data-left'); t.className = 'time'; t.style.background = '#DDF3E8'; t.style.color = 'var(--ok)'; t.textContent = 'Submitted'; }
@@ -392,7 +398,7 @@ function draw() {
     $('rows').innerHTML = list.length ? list.map((s) => {
       const pct = s.total ? Math.round(s.answered / s.total * 100) : 0;
       const left = leftNow(s);
-      return `<tr><td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td><td>${s.groupNo ? 'Group ' + s.groupNo : '–'}</td>
+      return `<tr><td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}${s.tabSwitches ? `<br><span style="color:var(--bad)">⚠ ${s.tabSwitches} tab departure(s). Last: ${new Date(s.lastTabSwitch * 1000).toLocaleTimeString('en-GB')}</span>` : ''}</td><td>${esc(s.className)}</td><td>${s.groupNo ? 'Group ' + s.groupNo : '–'}</td>
         <td><span class="pill ${LABEL[s.status][1]}">${LABEL[s.status][0]}</span></td>
         <td>${s.status === 'none' ? '–' : `<div class="prog"><div class="bar ${s.status === 'submitted' ? 'done' : ''}"><i style="width:${pct}%"></i></div><span>${s.answered}/${s.total}</span></div>`}</td>
         <td>${left === null ? '–' : left === 0 ? '<span class="time crit">Time up</span>' : `<span class="time ${urgency(left)}" data-left="${s.secondsLeft}">${mmss(left)}</span>`}</td></tr>`;

@@ -3,12 +3,6 @@ import { requireRole, scope, type Env } from './auth';
 import { closeOpenAttempts } from './exams';
 
 // Admin results: every submitted exam, with scores, and the switch that lets a student see theirs.
-// Number of questions per subject in one exam (one cheap indexed query).
-async function questionCounts(db: D1Database, examId: number) {
-  const { results } = await db.prepare('SELECT subject_id AS id, COUNT(*) AS n FROM questions WHERE exam_id = ? GROUP BY subject_id').bind(examId).all<{ id: string; n: number }>();
-  return new Map(results.map((r) => [r.id, r.n]));
-}
-
 const results = new Hono<Env>();
 results.use('*', requireRole('admin'), scope);
 
@@ -47,17 +41,15 @@ results.get('/monitor', async (c) => {
   if (live) await closeOpenAttempts(c.env.DB, eid, true); // students who left after time ran out are closed and marked
   const { results: rows } = await c.env.DB.prepare(
     `SELECT s.code, s.full_name AS fullName, s.class_name AS className,
-            a.group_no AS groupNo, a.submitted_at AS submittedAt, a.ends_at AS endsAt, a.answered AS answered
+            a.group_no AS groupNo, a.submitted_at AS submittedAt, a.ends_at AS endsAt, a.answered AS answered, a.id AS attemptId,
+            (SELECT COUNT(*) FROM attempt_questions aq WHERE aq.attempt_id = a.id) AS assignedTotal,
+            (SELECT COUNT(*) FROM exam_focus_events f WHERE f.attempt_id = a.id) AS tabSwitches,
+            (SELECT MAX(occurred_at) FROM exam_focus_events f WHERE f.attempt_id = a.id) AS lastTabSwitch
        FROM students s LEFT JOIN attempts a ON a.student_id = s.id AND a.exam_id = ?1
       WHERE s.session_id = ?2 ORDER BY s.seq`,
   )
     .bind(eid, sid)
-    .all<{ code: string; fullName: string; className: string; groupNo: number | null; submittedAt: string | null; endsAt: number | null; answered: number | null }>();
-  // Questions per group, worked out once for the whole class (it used to be recounted for every student).
-  const perSubject = await questionCounts(c.env.DB, eid);
-  const { results: gs } = await c.env.DB.prepare('SELECT group_no AS g, subject_id AS sub FROM group_subjects').all<{ g: number; sub: string }>();
-  const totalOf = new Map<number, number>();
-  for (const g of new Set(gs.map((x) => x.g))) totalOf.set(g, (perSubject.get('eng') ?? 0) + gs.filter((x) => x.g === g).reduce((n, x) => n + (perSubject.get(x.sub) ?? 0), 0));
+    .all<{ code: string; fullName: string; className: string; groupNo: number | null; submittedAt: string | null; endsAt: number | null; answered: number | null; attemptId: number | null; assignedTotal: number; tabSwitches: number; lastTabSwitch: number | null }>();
   const exam = await c.env.DB.prepare('SELECT name, minutes FROM exams WHERE id = ?').bind(eid).first<{ name: string; minutes: number }>();
   const now = Math.floor(Date.now() / 1000);
   return c.json({
@@ -65,13 +57,13 @@ results.get('/monitor', async (c) => {
     minutes: exam?.minutes ?? 0,
     live,
     students: rows.map((r) => ({
-      code: r.code,
+      code: r.code, attemptId: r.attemptId, tabSwitches: r.tabSwitches, lastTabSwitch: r.lastTabSwitch,
       fullName: r.fullName,
       className: r.className,
       status: r.groupNo === null ? 'none' : r.submittedAt ? 'submitted' : 'in_progress',
       groupNo: r.groupNo,
       answered: r.groupNo === null ? 0 : r.answered ?? 0,
-      total: r.groupNo === null ? 0 : totalOf.get(r.groupNo) ?? 0,
+      total: r.groupNo === null ? 0 : r.assignedTotal,
       secondsLeft: r.groupNo !== null && !r.submittedAt && r.endsAt ? Math.max(0, r.endsAt - now) : null,
     })),
     now,
