@@ -12,21 +12,21 @@ h1 { font-size:24px; margin:0 0 12px } .controls p { line-height:1.5 }
 label { display:flex; flex-direction:column; gap:8px } select, button { min-height:44px; padding:8px 14px; font:inherit }
 button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status { white-space:pre-line }
 #sheets { overflow:auto } .card-sheet { width:190mm; height:276mm; padding:0; margin:0 auto 20px; background:#fff; box-sizing:border-box; color:#111 }
-.sheet-heading { height:12mm; display:flex; align-items:center; justify-content:space-between; font-size:10pt; font-weight:bold; padding:0 2mm }
-.card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(4,63mm); gap:3mm }
-.login-card { border:1px dashed #555; padding:4mm; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; min-width:0 }
-.login-card header { font-size:10pt; font-weight:bold; display:flex; align-items:center; justify-content:space-between; gap:2mm; border-bottom:1px solid #aaa; padding-bottom:1mm }
-.school-crest { width:9mm; height:9mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
-.card-signatures { display:flex; justify-content:space-between; gap:8mm; margin-top:auto; padding-top:1mm }
+.sheet-heading { height:7mm; display:flex; align-items:center; justify-content:space-between; font-size:10pt; font-weight:bold; padding:0 2mm }
+.card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(7,37mm); gap:1.5mm }
+.login-card { border:1px dashed #555; padding:1.5mm; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; min-width:0 }
+.login-card header { font-size:8pt; font-weight:bold; display:flex; align-items:center; justify-content:space-between; gap:2mm; border-bottom:1px solid #aaa; padding-bottom:.5mm }
+.school-crest { width:5mm; height:5mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
+.card-signatures { display:flex; justify-content:space-between; gap:8mm; margin-top:auto; padding-top:0 }
 .card-signatures div { width:30mm; text-align:center; display:flex; flex-direction:column; align-items:center }
-.card-signatures img { width:24mm; height:6mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
-.card-signatures span { width:100%; border-top:1px solid #777; font-size:7pt; padding-top:.5mm }
-.login-card header span { font-size:8pt; font-weight:normal; text-align:right }
-.login-card h2 { font-size:12pt; line-height:1.2; margin:2mm 0 1mm; overflow-wrap:anywhere }
-.login-card .class-name { font-size:9pt; margin:0 0 2mm }
-.login-card dl { margin:0 } .login-card dl div { display:grid; grid-template-columns:25mm 1fr; align-items:baseline; gap:2mm; margin-bottom:1mm }
-.login-card dt { font-size:9pt } .login-card dd { margin:0; font: bold 11pt monospace; overflow-wrap:anywhere }
-.login-card footer { margin-top:1mm; font-size:7pt; line-height:1.2; overflow-wrap:anywhere }
+.card-signatures img { width:24mm; height:4mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
+.card-signatures span { width:100%; border-top:1px solid #777; font-size:6pt; padding-top:0 }
+.login-card header span { font-size:7pt; font-weight:normal; text-align:right }
+.login-card h2 { font-size:9pt; line-height:1.05; margin:1mm 0 .5mm; overflow-wrap:anywhere }
+.login-card .class-name { font-size:7pt; margin:0 0 .5mm }
+.login-card dl { margin:0 } .login-card dl div { display:grid; grid-template-columns:25mm 1fr; align-items:baseline; gap:2mm; margin-bottom:0 }
+.login-card dt { font-size:8pt } .login-card dd { margin:0; font: bold 10pt monospace; overflow-wrap:anywhere }
+.login-card footer { margin-top:.5mm; font-size:6.5pt; line-height:1.2; overflow-wrap:anywhere }
 @page { size:A4 portrait; margin:10mm }
 @media print {
  body { background:white; padding:0!important; margin:0!important }
@@ -41,7 +41,7 @@ button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status
 <body>
 <div class="controls">
 <h1>Print student login cards</h1>
-<p>Choose one class section at a time. Each A4 sheet holds eight cards: two columns and four rows.</p>
+<p>Choose one class section at a time. Each A4 sheet holds 14 cards: two columns and seven rows.</p>
 <p>Use A4 portrait, 100% scale, and turn off browser headers and footers in the print settings.</p>
 <div class="actions">
 <label>Class section<select id="section"><option value="">Choose a section</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select></label>
@@ -90,7 +90,7 @@ $('prepare').onclick = async () => {
     await Promise.all(images.map(image => image.decode()));
     if (generation !== current) return;
     $('print').disabled = false;
-    $('status').textContent = section + ': ' + result.cards.length + ' cards on ' + Math.ceil(result.cards.length/8) + ' A4 sheet(s). Review the preview, then print. Only this section will print.';
+    $('status').textContent = section + ': ' + result.cards.length + ' cards on ' + Math.ceil(result.cards.length/14) + ' A4 sheet(s). Review the preview, then print. Only this section will print.';
   } catch (error) { if (generation === current) { $('sheets').replaceChildren(); $('print').disabled=true; $('status').textContent=error.message || 'Could not prepare cards.'; } }
   finally { busy=false; $('section').disabled=false; $('prepare').disabled=!$('section').value; }
 };
