@@ -61,10 +61,10 @@ async function finalize(db: D1Database, attemptId: number) {
     // A subject with no right answers still gets a row, with 0.
     db.prepare(
       `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score, total)
-       SELECT a.id, s.id, COALESCE(t.n, 0), (SELECT COUNT(*) FROM questions q WHERE q.exam_id = a.exam_id AND q.subject_id = s.id)
+       SELECT a.id, s.id, COALESCE(t.n, 0), (SELECT COUNT(*) FROM attempt_questions aq JOIN questions q ON q.id = aq.question_id WHERE aq.attempt_id = a.id AND q.subject_id = s.id)
          FROM attempts a JOIN subjects s ON s.id IN ${SUBJECTS_OF}
          LEFT JOIN (SELECT q.subject_id AS sid, COUNT(*) AS n
-                      FROM answers w JOIN questions q ON q.id = w.question_id
+                      FROM answers w JOIN attempt_questions aq ON aq.attempt_id = w.attempt_id AND aq.question_id = w.question_id JOIN questions q ON q.id = aq.question_id
                      WHERE w.attempt_id = ?1 AND w.chosen = q.correct
                      GROUP BY q.subject_id) t ON t.sid = s.id
         WHERE a.id = ?1`,
@@ -110,7 +110,7 @@ exam.get('/', async (c) => {
 
   if (attempt.submitted_at) {
     const saved = await db.prepare('SELECT question_id AS q, chosen, revision FROM answers WHERE attempt_id = ?').bind(attempt.id).all<{ q: number; chosen: string; revision: number }>();
-    const qs = await db.prepare(`SELECT q.id FROM questions q WHERE q.exam_id = ? AND (q.subject_id = 'eng' OR q.subject_id IN (SELECT subject_id FROM group_subjects WHERE group_no = ?))`).bind(examId, attempt.group_no).all<{ id: number }>();
+    const qs = await db.prepare('SELECT question_id AS id FROM attempt_questions WHERE attempt_id = ? ORDER BY question_id').bind(attempt.id).all<{ id: number }>();
     const identity = { questionIds: qs.results.map((q) => q.id), examId, attemptId: attempt.id, answers: Object.fromEntries(saved.results.map((x) => [x.q, x.chosen])), answerRevisions: Object.fromEntries(saved.results.map((x) => [x.q, x.revision])) };
     // Saved choices let the browser reconcile pending work even if a submit response was lost.
     if (!attempt.released) return c.json({ ...identity, status: 'submitted', examName: info.name, released: false });
@@ -136,11 +136,11 @@ exam.get('/', async (c) => {
   const { results: qs } = await db
     .prepare(
       `SELECT q.id, q.subject_id AS subjectId, q.body, q.option_a AS a, q.option_b AS b, q.option_c AS c, q.option_d AS d
-         FROM questions q
-        WHERE q.exam_id = ? AND q.subject_id IN (${subs.map(() => '?').join(',')})
+         FROM attempt_questions aq JOIN questions q ON q.id = aq.question_id
+        WHERE aq.attempt_id = ? AND q.subject_id IN (${subs.map(() => '?').join(',')})
         ORDER BY q.id`,
     )
-    .bind(examId, ...subs.map((s) => s.id))
+    .bind(attempt.id, ...subs.map((s) => s.id))
     .all<{ id: number; subjectId: string; body: string; a: string; b: string; c: string; d: string }>();
   const { results: ans } = await db
     .prepare('SELECT question_id AS q, chosen, revision FROM answers WHERE attempt_id = ?')
@@ -174,17 +174,17 @@ exam.post('/start', async (c) => {
 
   if (expectedExamId !== examId) return c.json({ error: 'The live exam has changed. Refresh before starting.', attemptChanged: true }, 409);
 
-  // Exactly 50 per subject. A trigger repeats this check atomically with the INSERT.
+  // A bank of 50–80 per subject; each attempt is allocated 50. A trigger repeats this check atomically with the INSERT.
   const empty = await c.env.DB
     .prepare(
       `SELECT s.name FROM subjects s
         WHERE (s.id = 'eng' OR s.id IN (SELECT subject_id FROM group_subjects WHERE group_no = ?))
-          AND (SELECT COUNT(*) FROM questions q WHERE q.subject_id = s.id AND q.exam_id = ?) <> 50`,
+          AND (SELECT COUNT(*) FROM questions q WHERE q.subject_id = s.id AND q.exam_id = ?) NOT BETWEEN 50 AND 80`,
     )
     .bind(group, examId)
     .all<{ name: string }>();
   if (empty.results.length) {
-    return c.json({ error: `The exam is not ready yet (each subject needs exactly 50 questions: ${empty.results.map((r) => r.name).join(', ')}). Please tell your teacher.` }, 409);
+    return c.json({ error: `The exam is not ready yet (each subject needs 50–80 questions: ${empty.results.map((r) => r.name).join(', ')}). Please tell your teacher.` }, 409);
   }
 
   try {
@@ -193,7 +193,7 @@ exam.post('/start', async (c) => {
       .run();
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
-    if (message.includes('EXAM_NOT_READY')) return c.json({ error: 'The exam is not ready. Each subject needs exactly 50 questions.' }, 409);
+    if (message.includes('EXAM_NOT_READY')) return c.json({ error: 'The exam is not ready. Each subject needs 50–80 questions.' }, 409);
     if (message.includes('EXAM_CHANGED')) return c.json({ error: 'The live exam has changed. Refresh before starting.', attemptChanged: true }, 409);
     if (message.includes('UNIQUE')) return c.json({ error: 'You have already started your exam.' }, 409);
     throw err;
@@ -223,7 +223,7 @@ exam.put('/answer', async (c) => {
     c.env.DB.prepare(
       `INSERT OR IGNORE INTO answers (attempt_id, question_id, chosen, revision)
        SELECT a.id, q.id, ?3, ?6 FROM attempts a JOIN questions q ON q.id = ?2
-        WHERE ${valid} AND ${inMySubjects} AND q.exam_id = ?5`,
+        WHERE ${valid} AND ${inMySubjects} AND q.exam_id = ?5 AND EXISTS (SELECT 1 FROM attempt_questions aq WHERE aq.attempt_id = a.id AND aq.question_id = q.id)`,
     ).bind(attempt.id, questionId, chosen, now, examId, revision),
     c.env.DB.prepare(`UPDATE attempts SET answered = answered + 1 WHERE id = ?1 AND changes() = 1`).bind(attempt.id),
     c.env.DB.prepare(

@@ -9,7 +9,7 @@ const edit = { role: 'admin', method: 'PUT', body: { body: 'Changed question?', 
 test('incomplete papers cannot start, including direct inserts and start/edit races', async (t) => {
   const f = fixture({ perSubject: 1 }); t.after(f.close);
   const r = await f.request(studentPath + '/start', { method: 'POST', body: { examId: 1, groupNo: 2 } });
-  assert.equal(r.status, 409); assert.match(r.body.error, /exactly 50/);
+  assert.equal(r.status, 409); assert.match(r.body.error, /50–80/);
   assert.throws(() => f.sql.exec('INSERT INTO attempts(student_id, exam_id, group_no, ends_at) VALUES(1,1,2,9999999999)'), /EXAM_NOT_READY/);
   assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM attempts').get().n, 0);
 });
@@ -140,10 +140,10 @@ test('starting a new academic session preserves and marks the previous sitting',
   assert.equal((await f.request(studentPath)).status, 403);
 });
 
-test('parallel imports cannot exceed fifty questions in a subject', async (t) => {
-  const f = fixture({ perSubject: 49 }); t.after(f.close);
+test('parallel imports cannot exceed eighty questions in a subject', async (t) => {
+  const f = fixture({ perSubject: 79 }); t.after(f.close);
   const body = { rows: [{ subject: 'eng', body: 'A new question?', a: 'One', b: 'Two', c: 'Three', d: 'Four', correct: 'A' }] };
   const results = await Promise.all([1, 2].map(() => f.request('/api/admin/questions/import', { role: 'admin', method: 'POST', body })));
-  assert.equal(f.sql.prepare("SELECT COUNT(*) AS n FROM questions WHERE subject_id = 'eng'").get().n, 50);
+  assert.equal(f.sql.prepare("SELECT COUNT(*) AS n FROM questions WHERE subject_id = 'eng'").get().n, 80);
   assert.equal(results.reduce((n, x) => n + x.body.added, 0), 1);
 });

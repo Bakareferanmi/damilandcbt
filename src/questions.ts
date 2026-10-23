@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import { liveExamOnly, requireRole, scope, type Env } from './auth';
 
 // Question bank routes. Mounted at /api/admin/questions (admins only).
-// Each subject holds at most 50 questions: the exam shows exactly 50 per subject.
+// Each subject holds at most 80 questions: the exam shows exactly 50 per subject.
 
-const MAX_PER_SUBJECT = 50;
+const MAX_PER_SUBJECT = 80;
 const MAX_IMPORT_ROWS = 500;
 const LETTERS = ['A', 'B', 'C', 'D'] as const;
 
@@ -37,7 +37,7 @@ questions.use('*', async (c, next) => {
   await next();
 });
 
-// Every subject with how many questions it has (for the "n / 50" progress bars).
+// Every subject with how many questions it has (for the "n / 80" progress bars).
 questions.get('/subjects', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT s.id, s.name, COUNT(q.id) AS count
@@ -73,7 +73,7 @@ questions.post('/', async (c) => {
   const r = check(input);
   if (!r.ok) return c.json({ error: r.error }, 400);
 
-  // The "fewer than 50" test runs inside the INSERT itself, so two admins adding at the same moment cannot pass 50.
+  // The "fewer than 80" test runs inside the INSERT itself, so two admins adding at the same moment cannot pass 80.
   const res = await c.env.DB.prepare(
     `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
@@ -109,7 +109,7 @@ questions.delete('/:id', async (c) => {
 });
 
 // Bulk upload. The page reads the CSV and sends the rows here as JSON.
-// Rows that are wrong, or that would push a subject past 50, are skipped and reported. The rest are saved together.
+// Rows that are wrong, or that would push a subject past 80, are skipped and reported. The rest are saved together.
 questions.post('/import', async (c) => {
   const body = await c.req
     .json<{ rows?: { row?: number; subject?: string; question?: string; a?: string; b?: string; c?: string; d?: string; correct?: string }[] }>()
