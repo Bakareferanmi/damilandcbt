@@ -2,7 +2,7 @@
 
 ## What this change protects
 
-- Exactly 50 questions are required in each subject of a student's group before they can start.
+- 50–80 bank questions are required in each subject of a student's group before they can start.
 - The **first start permanently locks the whole paper**, including its name and duration. Finish uploading every intended subject before distributing logins. Copy the questions into a new exam to change a locked paper. Retakes do not unlock it.
 - Pending choices are stored on the same browser, separately for each student and attempt. A choice is labelled saved only after the server acknowledges its revision. Refresh and lost-response recovery reconcile with the server.
 - Requests from an old sitting cannot change or submit a replacement sitting. Delayed old revisions cannot overwrite newer choices.

@@ -58,7 +58,7 @@ wrangler.jsonc Cloudflare config
 
 ## Exam integrity and release checks
 
-Pending answers survive a refresh on the same browser when storage is available. Submission waits for acknowledgements, and delayed answer revisions cannot overwrite newer choices. Every chosen subject needs exactly 50 questions. **The first student start locks the entire paper, name and duration permanently**; finish all intended uploads first. Copy a paper into a new exam for changes. Retakes preserve the original sitting.
+Pending answers survive a refresh on the same browser when storage is available. Submission waits for acknowledgements, and delayed answer revisions cannot overwrite newer choices. Every chosen subject needs 50–80 bank questions. **The first student start locks the entire paper, name and duration permanently**; finish all intended uploads first. Copy a paper into a new exam for changes. Retakes preserve the original sitting.
 
 Read [the release and 70-student rehearsal guide](docs/exam-release.md) before a live exam.
 
@@ -129,4 +129,9 @@ Domains & Routes → Add custom domain. No code changes needed.
 
 - **"Something went wrong on the server"** – check the terminal running `npm run dev`.
 - **`npm run dev` seems to hang** – it is the running server; leave it open.
-- **Group says "not ready"** – each subject of the chosen group must have exactly 50 questions in the live exam.
+- **Group says "not ready"** – each subject of the chosen group must have 50–80 bank questions in the live exam.
+
+### Random question banks (migration 0012)
+Teachers/admins can add up to 80 questions per subject, manually or by CSV. At least 50 are required to start. Each new attempt gets 50 random questions per subject, persisted by the database atomically at start. Refreshing or reconnecting keeps that selection. Only assigned questions can be answered and marked; each subject is scored out of 50. Question order is also shuffled per attempt. With only 50 in a bank, everyone has the same set; upload 80 for variation. Some overlap is expected and independently random sets are not guaranteed unique. Existing attempts and results retain their original paper. Retake archives include allocated question IDs.
+
+Apply `npm run db:migrate:remote` then deploy the matching API with `npm run deploy`, during a maintenance window with no new starts until deployment finishes. Migration 0012 and the API must both be installed before using larger banks. Existing locked papers remain locked; copy into a new exam to add more questions.

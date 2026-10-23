@@ -194,7 +194,7 @@ app.post('/api/admin/students/:code/retake', requireRole('admin'), scope, liveEx
   await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO attempt_archives (student_id, exam_id, original_attempt_id, attempt_json, answers_json, scores_json, authorised_by, reason)
       SELECT a.student_id, a.exam_id, a.id,
-        json_object('id', a.id, 'groupNo', a.group_no, 'startedAt', a.started_at, 'submittedAt', a.submitted_at, 'endsAt', a.ends_at, 'released', a.released, 'answered', a.answered),
+        json_object('id', a.id, 'groupNo', a.group_no, 'startedAt', a.started_at, 'submittedAt', a.submitted_at, 'endsAt', a.ends_at, 'released', a.released, 'answered', a.answered, 'questionIds', json((SELECT json_group_array(question_id) FROM attempt_questions WHERE attempt_id = a.id))),
         (SELECT json_group_array(json_object('questionId', question_id, 'chosen', chosen, 'revision', revision)) FROM answers WHERE attempt_id = a.id),
         (SELECT json_group_array(json_object('subjectId', subject_id, 'score', score, 'total', total)) FROM scores WHERE attempt_id = a.id), ?, ?
       FROM attempts a WHERE a.id = ?`).bind(c.get('session').id, reason, row.attemptId),

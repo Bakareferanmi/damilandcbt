@@ -65,7 +65,7 @@
   <p id="paper-lock" class="msg" hidden>This paper is locked because a student has started. Copy it into a new exam to change questions.</p>
   <section class="card" id="subjects-card" hidden>
     <h2>Choose a subject</h2>
-    <p class="small">Finish all intended subjects before students start. The first start locks the entire paper.</p>
+    <p class="small">Add 50–80 questions per subject. Each student receives a random 50, fixed for their attempt. Upload 80 for greater variation. Finish all intended subjects before students start. The first start locks the entire paper.</p>
     <div class="subjects" id="subjects"></div>
   </section>
 
@@ -124,7 +124,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-let subjects = [], max = 50, current = null, editing = null, loaded = [], paperLocked = false;
+let subjects = [], max = 80, current = null, editing = null, loaded = [], paperLocked = false;
 
 async function api(path, body, method) {
   const res = await fetch(path, {
@@ -147,7 +147,7 @@ async function loadSubjects() {
     <button type="button" class="subj" data-id="${esc(s.id)}" aria-pressed="${current === s.id}">
       <span>${esc(s.name)}</span>
       <span class="bar ${s.count >= max ? 'full' : ''}"><i style="width:${Math.min(100, s.count / max * 100)}%"></i></span>
-      <span class="small">${s.count} / ${max} questions</span>
+      <span class="small">${s.count} / ${max} bank questions · ${s.count >= 50 ? 'Ready: students answer 50' : 'Needs at least 50'}</span>
     </button>`).join('');
   document.querySelectorAll('.subj').forEach((b) => b.onclick = () => pick(b.dataset.id));
   return true;

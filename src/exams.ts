@@ -21,10 +21,10 @@ export function closeAttemptStatements(db: D1Database, examId: number, onlyExpir
     // Marks each student in one pass over their answers (see finalize in exam.ts).
     db.prepare(
       `INSERT OR IGNORE INTO scores (attempt_id, subject_id, score, total)
-       SELECT a.id, s.id, COALESCE(t.n, 0), (SELECT COUNT(*) FROM questions q WHERE q.exam_id = a.exam_id AND q.subject_id = s.id)
+       SELECT a.id, s.id, COALESCE(t.n, 0), (SELECT COUNT(*) FROM attempt_questions aq JOIN questions q ON q.id = aq.question_id WHERE aq.attempt_id = a.id AND q.subject_id = s.id)
          FROM attempts a JOIN subjects s ON s.id IN ${SUBJECTS_OF}
          LEFT JOIN (SELECT w.attempt_id AS aid, q.subject_id AS sid, COUNT(*) AS n
-                      FROM answers w JOIN questions q ON q.id = w.question_id
+                      FROM answers w JOIN attempt_questions aq ON aq.attempt_id = w.attempt_id AND aq.question_id = w.question_id JOIN questions q ON q.id = aq.question_id
                      WHERE w.chosen = q.correct AND w.attempt_id IN (SELECT x.id FROM attempts x WHERE ${cond('x')})
                      GROUP BY w.attempt_id, q.subject_id) t ON t.aid = a.id AND t.sid = s.id
         WHERE ${cond('a')}`,
