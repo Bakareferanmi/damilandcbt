@@ -162,6 +162,7 @@ app.put('/api/admin/students/:code', requireRole('admin'), scope, async (c) => {
 // Shows a student's current password to an admin (for a student who forgot it and did not write it down).
 // Only students whose password was created or reset after this feature was added have one saved.
 app.get('/api/admin/students/:code/password', requireRole('admin'), scope, async (c) => {
+  c.header('Cache-Control', 'no-store');
   const row = await c.env.DB.prepare('SELECT password_enc FROM students WHERE code = ? AND session_id = ?')
     .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
     .first<{ password_enc: string | null }>();
