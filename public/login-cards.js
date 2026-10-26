@@ -30,3 +30,16 @@ export async function loadCardPasswords(students, getPassword) {
   }));
   return { cards: cards.filter(Boolean), missing };
 }
+
+
+// Quote every field and keep spreadsheet formula-like text inert.
+export function studentDetailsCsv(students, { session, website }) {
+  const cell = value => {
+    let text = String(value ?? '');
+    if (/^[\s]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+    return '"' + text.replaceAll('"', '""') + '"';
+  };
+  const rows = [['Full name', 'Class section', 'Session', 'Student code', 'Password', 'Login website'],
+    ...students.map(s => [s.fullName, s.className, session, s.code, s.password, website])];
+  return '\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n') + '\r\n';
+}

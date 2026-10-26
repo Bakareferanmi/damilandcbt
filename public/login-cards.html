@@ -40,21 +40,22 @@ button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status
 </head>
 <body>
 <div class="controls">
-<h1>Print student login cards</h1>
+<h1>Student login cards and CSV</h1>
 <p>Choose one class section at a time. Each A4 sheet holds 14 cards: two columns and seven rows.</p>
+<p>The CSV includes names, class sections, session, student codes, saved passwords and the login website. Open it in Excel to view or print the table.</p>
 <p>Use A4 portrait, 100% scale, and turn off browser headers and footers in the print settings.</p>
 <div class="actions">
 <label>Class section<select id="section"><option value="">Choose a section</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select></label>
-<button id="prepare" disabled>Prepare cards</button><button id="print" disabled>Print this section</button><button id="clear">Clear preview</button><a href="/students">Back to students</a>
+<button id="prepare" disabled>Prepare cards</button><button id="print" disabled>Print this section</button><button id="export-csv" disabled>Download student CSV</button><button id="clear">Clear preview</button><a href="/students">Back to students</a>
 </div>
 <p id="status" role="status" aria-live="polite">Choose a section to begin.</p>
 </div>
 <div id="sheets"></div>
 <script type="module">
-import { cardSheets, loadCardPasswords } from '/login-cards.js';
+import { cardSheets, loadCardPasswords, studentDetailsCsv } from '/login-cards.js';
 const $ = id => document.getElementById(id);
-let generation = 0, busy = false;
-function clear() { generation++; $('sheets').replaceChildren(); $('print').disabled = true; $('status').textContent = 'Preview cleared. Choose a section and prepare cards.'; }
+let generation = 0, busy = false, exportData = null;
+function clear() { generation++; exportData = null; $('export-csv').disabled = true; $('sheets').replaceChildren(); $('print').disabled = true; $('status').textContent = 'Preview cleared. Choose a section and prepare cards.'; }
 $('clear').onclick = clear;
 $('section').onchange = () => { clear(); $('prepare').disabled = busy || !$('section').value; };
 $('prepare').onclick = async () => {
@@ -89,10 +90,22 @@ $('prepare').onclick = async () => {
     const images = [...$('sheets').querySelectorAll('img')];
     await Promise.all(images.map(image => image.decode()));
     if (generation !== current) return;
+    exportData = { students: result.cards, session, section, website: location.origin };
+    $('export-csv').disabled = false;
     $('print').disabled = false;
-    $('status').textContent = section + ': ' + result.cards.length + ' cards on ' + Math.ceil(result.cards.length/14) + ' A4 sheet(s). Review the preview, then print. Only this section will print.';
+    $('status').textContent = section + ': ' + result.cards.length + ' cards on ' + Math.ceil(result.cards.length/14) + ' A4 sheet(s). Print the cards or download the student CSV. Only this section is included.';
   } catch (error) { if (generation === current) { $('sheets').replaceChildren(); $('print').disabled=true; $('status').textContent=error.message || 'Could not prepare cards.'; } }
   finally { busy=false; $('section').disabled=false; $('prepare').disabled=!$('section').value; }
+};
+$('export-csv').onclick = () => {
+  if (!exportData || $('export-csv').disabled) return;
+  const csv = studentDetailsCsv(exportData.students, exportData);
+  const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = ('student-details-' + exportData.section + '-' + exportData.session).replace(/[^a-zA-Z0-9_-]/g,'-') + '.csv';
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 let sheetParent = null, sheetNext = null;
 addEventListener('beforeprint', () => {
