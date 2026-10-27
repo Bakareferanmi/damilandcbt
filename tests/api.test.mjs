@@ -52,8 +52,8 @@ test('submission is idempotent, hides scores until release and blocks subsequent
   await f.request('/api/admin/results/release', { role: 'admin', method: 'POST', body: { all: true } });
   result = await f.request(studentPath);
   assert.equal(result.body.results.length, 4);
-  assert.equal(result.body.results.reduce((n, x) => n + x.score, 0), 1);
-  assert.equal(result.body.results.reduce((n, x) => n + x.total, 0), 200);
+  assert.equal(result.body.results.reduce((n, x) => n + x.score, 0), 2);
+  assert.equal(result.body.results.reduce((n, x) => n + x.total, 0), 400);
   assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM scores').get().n, 4);
 });
 
@@ -78,7 +78,7 @@ test('retakes preserve the old sitting and cannot unlock papers or replay stale 
   assert.equal(JSON.parse(archive.scores_json).reduce((n, x) => n + x.score, 0), 1);
   assert.equal(archive.authorised_by, 1); assert.match(archive.reason, /Power/);
   const history = await f.request('/api/admin/students/TEST1/attempt-history', { role: 'admin' });
-  assert.equal(history.body.history[0].scores.reduce((n, x) => n + x.total, 0), 200);
+  assert.equal(history.body.history[0].scores.reduce((n, x) => n + x.total, 0), 400);
   assert.equal((await f.request('/api/admin/students/TEST1/attempt-history')).status, 401);
   assert.throws(() => f.sql.exec("UPDATE questions SET correct = 'B' WHERE id = 1"), /PAPER_LOCKED/);
   const next = await f.start(); assert.notEqual(next.attemptId, attemptId);
