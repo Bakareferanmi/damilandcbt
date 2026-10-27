@@ -1,3 +1,4 @@
+import { asMarks } from './scoring';
 import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
 import { COOKIE, currentSessionId, liveExamOnly, readSession, requireRole, scope, startSession, type Env } from './auth';
@@ -214,7 +215,7 @@ app.get('/api/admin/students/:code/attempt-history', requireRole('admin'), scope
     WHERE s.code = ? AND s.session_id = ? AND h.exam_id = ? ORDER BY h.id DESC`)
     .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'), c.get('examId'))
     .all<{ attemptId: number; attempt: string; answers: string; scores: string; reason: string; authorisedBy: number; archivedAt: string }>();
-  return c.json({ history: rows.results.map((r) => ({ ...r, attempt: JSON.parse(r.attempt), answers: JSON.parse(r.answers), scores: JSON.parse(r.scores) })) });
+  return c.json({ history: rows.results.map((r) => ({ ...r, attempt: JSON.parse(r.attempt), answers: JSON.parse(r.answers), scores: JSON.parse(r.scores).map(asMarks) })) });
 });
 
 // Deletes a student who has not started the exam (for registration mistakes).

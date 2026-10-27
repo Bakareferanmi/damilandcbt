@@ -1,3 +1,4 @@
+import { asMarks } from './scoring';
 import { Hono } from 'hono';
 import { currentExamId, requireRole, type Env } from './auth';
 
@@ -82,7 +83,7 @@ async function results(db: D1Database, attemptId: number) {
     )
     .bind(attemptId)
     .all<{ subject: string; score: number; total: number }>();
-  return rows;
+  return rows.map(asMarks);
 }
 
 exam.get('/', async (c) => {

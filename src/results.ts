@@ -1,3 +1,4 @@
+import { asMarks } from './scoring';
 import { Hono } from 'hono';
 import { requireRole, scope, type Env } from './auth';
 import { closeOpenAttempts } from './exams';
@@ -28,7 +29,7 @@ results.get('/', async (c) => {
     .all<{ attemptId: number; subjectId: string; subject: string; score: number; total: number }>();
 
   const out = rows.map(({ attemptId, ...r }) => {
-    const scores = sc.filter((x) => x.attemptId === attemptId).map((x) => ({ subject: x.subject, score: x.score, total: x.total }));
+    const scores = sc.filter((x) => x.attemptId === attemptId).map((x) => asMarks({ subject: x.subject, score: x.score, total: x.total }));
     return { ...r, released: !!r.released, scores, total: scores.reduce((n, x) => n + x.score, 0), outOf: scores.reduce((n, x) => n + x.total, 0) };
   });
   return c.json({ results: out });
