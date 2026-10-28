@@ -30,6 +30,19 @@
   dialog::backdrop { background:rgba(11,18,48,.5) }
   dialog form { display:flex; flex-direction:column; gap:16px }
   dialog .acts { display:flex; gap:12px; justify-content:flex-end; flex-wrap:wrap }
+  #alphabetical-roster { display:none }
+  @media print {
+    @page { size:A4 portrait; margin:15mm }
+    body.roster-print { background:white; color:black }
+    body.roster-print > * { display:none !important }
+    body.roster-print > #alphabetical-roster { display:block !important; font-family:Arial,sans-serif }
+    #alphabetical-roster h1 { font-size:20px; margin:0 0 8px }
+    #alphabetical-roster p { color:black; margin-bottom:12px; font-size:13px }
+    #alphabetical-roster table { font-size:14px; line-height:20px; width:100% }
+    #alphabetical-roster th, #alphabetical-roster td { border:1px solid black; padding:8px; color:black; white-space:normal; overflow-wrap:anywhere }
+    #alphabetical-roster thead { display:table-header-group }
+    #alphabetical-roster tr { break-inside:avoid }
+  }
 </style>
 </head>
 <body>
@@ -53,7 +66,8 @@
       <input id="q" placeholder="Search name or code" style="max-width:240px" aria-label="Search">
       <select id="cls" style="max-width:200px" aria-label="Class"><option value="">All classes</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select>
     </div>
-    <p><a class="ghost" href="/login-cards">Print login cards / Export student CSV</a></p>
+    <div class="row"><a class="ghost" href="/login-cards">Print login cards / Export student CSV</a><button class="ghost" id="print-alphabetical" disabled>Print alphabetical list</button></div>
+    <p>Print names A–Z as displayed, with list numbers, student codes and classes. Uses the current class and search filters.</p>
     <div class="scroll"><table>
       <thead><tr><th>Code</th><th>Name</th><th>Class</th><th>Exam</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
@@ -101,6 +115,7 @@ function draw() {
   const q = $('q').value.trim().toLowerCase(), c = $('cls').value;
   const list = students.filter((s) => (!c || s.className === c) && (!q || s.fullName.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)));
   $('count').textContent = list.length;
+  $('print-alphabetical').disabled = !list.length;
   $('rows').innerHTML = list.length ? list.map((s) => `<tr>
     <td><b>${esc(s.code)}</b></td><td>${esc(s.fullName)}</td><td>${esc(s.className)}</td>
     <td><span class="pill ${STATUS[s.status][1]}">${STATUS[s.status][0]}</span></td>
@@ -114,6 +129,31 @@ function draw() {
   document.querySelectorAll('[data-delete]').forEach((b) => b.onclick = () => remove(b.dataset.delete));
 }
 $('q').oninput = draw; $('cls').onchange = draw;
+
+function alphabeticalRoster(list) {
+  const compare = new Intl.Collator('en', { sensitivity: 'base', numeric: true }).compare;
+  return [...list].sort((a, b) => compare(a.fullName.trim(), b.fullName.trim()) || compare(a.code, b.code));
+}
+function rosterHtml(list, scope, query) {
+  return `<h1>DAMILAND HIGH SCHOOL</h1><h2>Alphabetical student list</h2>
+    <p>${esc(scope)} · ${list.length} students · A–Z by displayed name${query ? ' · Search: ' + esc(query) : ''}</p>
+    <table><thead><tr><th>No.</th><th>Student name</th><th>Student code</th><th>Class</th></tr></thead>
+    <tbody>${alphabeticalRoster(list).map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.fullName)}</td><td>${esc(s.code)}</td><td>${esc(s.className)}</td></tr>`).join('')}</tbody></table>`;
+}
+$('print-alphabetical').onclick = () => {
+  const query = $('q').value.trim(), cls = $('cls').value;
+  const list = students.filter(s => (!cls || s.className === cls) && (!query || s.fullName.toLowerCase().includes(query.toLowerCase()) || s.code.toLowerCase().includes(query.toLowerCase())));
+  if (!list.length) return;
+  document.getElementById('alphabetical-roster')?.remove();
+  const box = document.createElement('section');
+  box.id = 'alphabetical-roster';
+  box.innerHTML = rosterHtml(list, cls || 'All classes', query);
+  document.body.appendChild(box);
+  const cleanup = () => { document.body.classList.remove('roster-print'); box.remove(); };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  document.body.classList.add('roster-print');
+  try { window.print(); } catch (err) { cleanup(); window.removeEventListener('afterprint', cleanup); throw err; }
+};
 
 function showSlip(name, cls, code, password) {
   $('slip').innerHTML = `<span class="k">Student</span><span style="font-weight:600">${esc(name)} · ${esc(cls)}</span>
