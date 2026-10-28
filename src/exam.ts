@@ -256,7 +256,7 @@ exam.post('/focus-event', async (c) => {
     SELECT id, ?2, ?3 FROM attempts WHERE id = ?1
       AND ?3 >= CAST(strftime('%s', started_at) AS INTEGER) AND ?3 <= ends_at
       AND (submitted_at IS NULL OR ?3 <= CAST(strftime('%s', submitted_at) AS INTEGER))
-      AND (SELECT COUNT(*) FROM exam_focus_events WHERE attempt_id = ?1) < 500`)
+      AND focus_count < 500`)
     .bind(a.id, b.eventId, b.occurredAt).run();
   return c.json({ ok: true });
 });

@@ -243,6 +243,7 @@ const mmss = (s) => { const h = Math.floor(s / 3600), m = String(Math.floor(s % 
 const initials = (n) => n.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 const R = 24, CIRC = 2 * Math.PI * R;
 
+let loading = false, failedPolls = 0;
 let students = [], filter = 'all', view = 'cards', paused = false, fetchedAt = 0, loadFailed = false, info = { exam: '', minutes: 0, live: true };
 let prev = null, wasAllDone = false;
 const els = new Map(); // student code -> card element (updated in place so animations keep running)
@@ -279,11 +280,13 @@ function diff(next) {
 }
 
 async function load() {
+  if (loading) return;
+  loading = true;
   try {
     const r = await fetch('/api/admin/results/monitor');
     if (!r.ok) throw new Error();
     const d = await r.json();
-    loadFailed = false;
+    loadFailed = false; failedPolls = 0;
     info = { exam: d.exam, minutes: d.minutes, live: d.live };
     fetchedAt = Date.now();
     diff(d.students);
@@ -291,7 +294,8 @@ async function load() {
     const flagged = students.filter(s => s.tabSwitches > 0);
     $('focus-summary').textContent = flagged.length ? `${flagged.length} student(s) flagged for tab departures. ${students.reduce((n,s)=>n+(s.tabSwitches || 0),0)} departure(s) recorded.` : 'No tab departures reported.';
     draw();
-  } catch { loadFailed = true; setUpd(); }
+  } catch { loadFailed = true; failedPolls++; setUpd(); }
+  finally { loading = false; }
 }
 
 function counts(list) {
@@ -431,16 +435,17 @@ function setUpd() {
   if (paused) { $('updText').textContent = 'Paused'; $('badge').classList.remove('on'); $('badgeText').textContent = 'Paused'; return; }
   if (!fetchedAt) { $('updText').textContent = 'Connecting…'; return; }
   const s = Math.floor((Date.now() - fetchedAt) / 1000);
-  const stale = loadFailed || s > (students.some((x) => x.status === 'in_progress') ? 15 : 60);
+  const stale = loadFailed || s > (students.some((x) => x.status === 'in_progress') ? 45 : 120);
   $('upd').classList.toggle('off', stale);
   if (stale) { $('badge').classList.remove('on'); $('badgeText').textContent = 'Connection stale'; }
   else drawHero(students);
   $('updText').textContent = stale ? `Connection stale · last updated ${s}s ago` : s < 2 ? 'Live · just updated' : `Updated ${s}s ago`;
 }
 
-// Refresh every 5 s while students are writing, only every 30 s when nobody is (saves database reads), and straight away when the tab comes back.
+// Poll summaries every 15 seconds while writing, 60 seconds otherwise. Back off on failures.
+// Countdown rendering below stays local and updates every second.
 (function loop() {
-  setTimeout(async () => { if (!paused && !document.hidden) await load(); loop(); }, students.some((x) => x.status === 'in_progress') ? 5000 : 30000);
+  setTimeout(async () => { if (!paused && !document.hidden) await load(); loop(); }, Math.min(120000, (students.some((x) => x.status === 'in_progress') ? 15000 : 60000) * 2 ** Math.min(failedPolls, 3)));
 })();
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !paused) load(); });
 // Every second: only the countdown numbers and the "updated" label change, so clicks and animations are never interrupted.

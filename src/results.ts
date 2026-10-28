@@ -43,9 +43,9 @@ results.get('/monitor', async (c) => {
   const { results: rows } = await c.env.DB.prepare(
     `SELECT s.code, s.full_name AS fullName, s.class_name AS className,
             a.group_no AS groupNo, a.submitted_at AS submittedAt, a.ends_at AS endsAt, a.answered AS answered, a.id AS attemptId,
-            (SELECT COUNT(*) FROM attempt_questions aq WHERE aq.attempt_id = a.id) AS assignedTotal,
-            (SELECT COUNT(*) FROM exam_focus_events f WHERE f.attempt_id = a.id) AS tabSwitches,
-            (SELECT MAX(occurred_at) FROM exam_focus_events f WHERE f.attempt_id = a.id) AS lastTabSwitch
+            a.assigned_total AS assignedTotal,
+            COALESCE(a.focus_count, 0) AS tabSwitches,
+            a.last_focus_at AS lastTabSwitch
        FROM students s LEFT JOIN attempts a ON a.student_id = s.id AND a.exam_id = ?1
       WHERE s.session_id = ?2 ORDER BY s.seq`,
   )
