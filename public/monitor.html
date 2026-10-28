@@ -243,7 +243,11 @@ const mmss = (s) => { const h = Math.floor(s / 3600), m = String(Math.floor(s % 
 const initials = (n) => n.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 const R = 24, CIRC = 2 * Math.PI * R;
 
-let loading = false, failedPolls = 0;
+let loading = false, failedPolls = 0, lastPollAt = null;
+function pollDelay() {
+  const base = students.some(x => x.status === 'in_progress') ? 15000 : 60000;
+  return Math.min(120000, base * 2 ** Math.min(failedPolls, 3));
+}
 let students = [], filter = 'all', view = 'cards', paused = false, fetchedAt = 0, loadFailed = false, info = { exam: '', minutes: 0, live: true };
 let prev = null, wasAllDone = false;
 const els = new Map(); // student code -> card element (updated in place so animations keep running)
@@ -280,7 +284,10 @@ function diff(next) {
 }
 
 async function load() {
-  if (loading) return;
+  // All refresh paths share the same guard, including tab visibility and Resume.
+  if (loading || paused || document.hidden) return;
+  if (lastPollAt !== null && Date.now() - lastPollAt < pollDelay()) return;
+  lastPollAt = Date.now();
   loading = true;
   try {
     const r = await fetch('/api/admin/results/monitor');
@@ -445,7 +452,7 @@ function setUpd() {
 // Poll summaries every 15 seconds while writing, 60 seconds otherwise. Back off on failures.
 // Countdown rendering below stays local and updates every second.
 (function loop() {
-  setTimeout(async () => { if (!paused && !document.hidden) await load(); loop(); }, Math.min(120000, (students.some((x) => x.status === 'in_progress') ? 15000 : 60000) * 2 ** Math.min(failedPolls, 3)));
+  setTimeout(async () => { if (!paused && !document.hidden) await load(); loop(); }, pollDelay());
 })();
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !paused) load(); });
 // Every second: only the countdown numbers and the "updated" label change, so clicks and animations are never interrupted.

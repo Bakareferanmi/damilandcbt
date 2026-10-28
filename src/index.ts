@@ -207,6 +207,61 @@ app.post('/api/admin/students/:code/retake', requireRole('admin'), scope, liveEx
   return c.json({ ok: true });
 });
 
+// Undo an accidental retake without replacing a later sitting or deleting the archive.
+app.post('/api/admin/students/:code/restore-attempt', requireRole('admin'), scope, liveExamOnly, async (c) => {
+  const body = await c.req.json<{ attemptId?: number }>().catch(() => ({} as { attemptId?: number }));
+  if (!Number.isSafeInteger(body.attemptId)) return c.json({ error: 'Choose an archived attempt.' }, 400);
+  const archived = await c.env.DB.prepare(`SELECT h.* FROM attempt_archives h JOIN students s ON s.id = h.student_id
+    WHERE s.code = ? AND s.session_id = ? AND h.exam_id = ? AND h.original_attempt_id = ?`)
+    .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'), c.get('examId'), body.attemptId)
+    .first<{ student_id: number; exam_id: number; original_attempt_id: number; attempt_json: string; answers_json: string; scores_json: string }>();
+  if (!archived) return c.json({ error: 'Archived attempt not found for this student and exam.' }, 404);
+  const a = JSON.parse(archived.attempt_json);
+  const answers = JSON.parse(archived.answers_json) as { questionId: number; chosen: string; revision: number }[];
+  const scores = JSON.parse(archived.scores_json) as { subjectId: string; score: number; total: number }[];
+  if (!a.submittedAt || !Array.isArray(a.questionIds) || !a.questionIds.length || !Array.isArray(answers) || !Array.isArray(scores) || scores.length !== 4) {
+    return c.json({ error: 'Only a completed, marked archive with its original question allocation can be restored.' }, 409);
+  }
+  const existing = await c.env.DB.prepare('SELECT id FROM attempts WHERE student_id = ? AND exam_id = ?')
+    .bind(archived.student_id, archived.exam_id).first();
+  if (existing) return c.json({ error: 'This student already has an attempt. Nothing was replaced.' }, 409);
+  const id = archived.original_attempt_id;
+  // Compatible with the optional 0014 monitor-summary migration, before or after deployment.
+  const columns = await c.env.DB.prepare('PRAGMA table_info(attempts)').all<{ name: string }>();
+  const summary = columns.results.some(x => x.name === 'assigned_total')
+    ? [c.env.DB.prepare('UPDATE attempts SET assigned_total = ? WHERE id = ?').bind(a.questionIds.length, id)] : [];
+  try {
+    // D1 batches are atomic. Concurrent restores/starts fail the UNIQUE constraint and roll back.
+    // Allocation triggers run on INSERT; replace that temporary allocation with the exact archived set.
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO attempts (id, student_id, exam_id, group_no, started_at, submitted_at, ends_at, released, answered)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(id, archived.student_id, archived.exam_id, a.groupNo, a.startedAt, a.submittedAt, a.endsAt, a.released ? 1 : 0, answers.length),
+      c.env.DB.prepare('DELETE FROM attempt_questions WHERE attempt_id = ?').bind(id),
+      c.env.DB.prepare(`INSERT INTO attempt_questions (attempt_id, question_id) SELECT ?, CAST(value AS INTEGER) FROM json_each(?)`)
+        .bind(id, JSON.stringify(a.questionIds)),
+      c.env.DB.prepare(`INSERT INTO answers (attempt_id, question_id, chosen, revision)
+        SELECT ?, json_extract(value, '$.questionId'), json_extract(value, '$.chosen'), COALESCE(json_extract(value, '$.revision'), 0) FROM json_each(?)`)
+        .bind(id, archived.answers_json),
+      c.env.DB.prepare(`INSERT INTO scores (attempt_id, subject_id, score, total)
+        SELECT ?, json_extract(value, '$.subjectId'), json_extract(value, '$.score'), json_extract(value, '$.total') FROM json_each(?)`)
+        .bind(id, archived.scores_json),
+      c.env.DB.prepare(`INSERT INTO exam_focus_events (attempt_id, event_id, occurred_at, received_at)
+        SELECT ?, json_extract(value, '$.eventId'), json_extract(value, '$.occurredAt'), json_extract(value, '$.receivedAt') FROM json_each(?)`)
+        .bind(id, JSON.stringify(a.focusEvents ?? [])),
+      ...summary,
+      c.env.DB.prepare(`INSERT INTO audit_events (actor_id, action, target) VALUES (?, 'restore-attempt', ?)`)
+        .bind(c.get('session').id, String(id)),
+    ]);
+  } catch (err) {
+    if (err instanceof Error && /UNIQUE|EXAM_CHANGED|EXAM_NOT_READY/.test(err.message)) {
+      return c.json({ error: 'The exam or attempt changed. Refresh before restoring. Nothing was replaced.' }, 409);
+    }
+    throw err;
+  }
+  return c.json({ ok: true, attemptId: id, score: scores.reduce((n, x) => n + x.score, 0) * 2, total: scores.reduce((n, x) => n + x.total, 0) * 2 });
+});
+
 // Historical attempts remain available to authorised staff after a retake.
 app.get('/api/admin/students/:code/attempt-history', requireRole('admin'), scope, async (c) => {
   const rows = await c.env.DB.prepare(`SELECT h.original_attempt_id AS attemptId, h.attempt_json AS attempt,
