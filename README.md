@@ -140,3 +140,31 @@ Apply `npm run db:migrate:remote` then deploy the matching API with `npm run dep
 Apply `npm run db:migrate:remote` before deploying this API. The exam page reports hidden-tab transitions (including minimising the browser) and queues reports locally for retries after reconnect or refresh. The teacher's Monitor shows persistent counts and latest event times in cards/table, a flagged-student summary, and activity alerts on the next successful poll (normally 5 seconds). Keep Monitor open and unpaused. This does not send email, push or sound notifications.
 
 Students see a notice before starting. A flag never submits or fails an exam. Browser reports can be blocked or manipulated and cannot identify what a student viewed, detect another device, or prove cheating. Page closure/reloading is not reliably detected. Event times come from the student's device and are labelled review evidence; the database also stores server receipt times. Up to 500 events per attempt are retained. Retakes archive reports before deleting the active attempt. Monitor progress uses allocated question totals, so an 80-question bank still shows 200 assigned questions.
+
+### Reduce exam-monitor database reads (migration 0014)
+
+Before deploying code that uses monitor summaries, apply all migrations:
+
+```sh
+npm run db:migrate:remote
+npm run deploy
+```
+
+Migration `0014_monitor_read_budget.sql` backfills assigned question totals and
+focus-event summaries for existing attempts. New papers record their total once,
+and new focus events update their attempt's summary atomically. Existing answers,
+question allocations, scores and attempt deadlines are retained. Do not manually
+edit allocation/event rows outside the application's supported flows.
+
+The monitor reads summary fields instead of recounting every assigned question
+and event on each refresh. It refreshes every 15 seconds while students write,
+every 60 seconds otherwise, pauses when hidden, prevents overlapping requests,
+and backs off to at most one automatic poll per 120 seconds after errors.
+Countdowns still update locally every second. Each additional open monitor tab
+still causes its own polling, so use one visible monitor where practical.
+
+Run `npm test`, `npm run typecheck` and `npm run test:exam-simulation` locally.
+These validate behavior; they do not measure billed D1 rows or guarantee free-tier
+capacity. Check Cloudflare's current-day row-read/write metrics during a small
+practice sitting before the next full exam. This update does not reset a quota
+already exhausted or resume expired attempts.
