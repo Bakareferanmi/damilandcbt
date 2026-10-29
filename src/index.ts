@@ -9,6 +9,7 @@ import exams from './exams';
 import questions from './questions';
 import results from './results';
 import settings from './settings';
+import digital from './digital';
 
 const CLASSES = ['SS3 Art', 'SS3 Commercial', 'SS3 Science'] as const;
 
@@ -55,6 +56,7 @@ const ipOf = (c: { req: { header: (n: string) => string | undefined } }) => c.re
 
 // Show a clear message (instead of a blank "Internal Server Error") when something unexpected breaks.
 app.onError((err, c) => {
+  if (err.message.includes('DIGITAL_SESSION_BUSY')) return c.json({ error: 'Digital Technologies students are still writing. Let them submit before changing the academic session.' }, 409);
   if (err.message.includes('EXAM_STILL_WRITING')) return c.json({ error: 'A student started while this change was being prepared. Refresh and confirm again before ending the exam.' }, 409);
   if (err.message.includes('PAPER_LOCKED')) return c.json({ error: 'This paper is locked because a student has started. Copy it into a new exam to make changes.' }, 409);
   console.error(err);
@@ -334,6 +336,8 @@ app.route('/api/admin', settings);
 // ---------- student: exam ----------
 
 app.route('/api/student/exam', exam);
+
+app.route('/api/digital', digital);
 
 // Anything else under /api is a 404 (static pages are served by Cloudflare itself).
 app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
