@@ -43,12 +43,12 @@ export function fixture({ students = 2, perSubject = 50, through = Infinity } = 
     const p = Buffer.from(JSON.stringify({ role, id, v: version, exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
     return 'session=' + h + '.' + p + '.' + createHmac('sha256', secret).update(h + '.' + p).digest('base64url');
   }
-  async function request(path, { role = 'student', id = 1, version = 0, method = 'GET', body, cookies } = {}) {
+  async function request(path, { role = 'student', id = 1, version = 0, method = 'GET', body, cookies, headers = {} } = {}) {
     const response = await app.request('https://example.test' + path, {
-      method, headers: { cookie: cookies ?? cookie(role, id, version), 'content-type': 'application/json' },
+      method, headers: { cookie: cookies ?? cookie(role, id, version), 'content-type': 'application/json', ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     }, { DB, JWT_SECRET: secret });
-    return { status: response.status, headers: response.headers, body: await response.json() };
+    return { status: response.status, headers: response.headers, body: response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text() };
   }
   async function start(id = 1, groupNo = 2) {
     const r = await request('/api/student/exam/start', { id, method: 'POST', body: { groupNo, examId: 1 } });
