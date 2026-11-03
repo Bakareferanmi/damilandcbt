@@ -168,3 +168,8 @@ These validate behavior; they do not measure billed D1 rows or guarantee free-ti
 capacity. Check Cloudflare's current-day row-read/write metrics during a small
 practice sitting before the next full exam. This update does not reset a quota
 already exhausted or resume expired attempts.
+
+
+### SS1 / SS2 Digital Technologies (migration 0015)
+
+A separate **Digital Technologies** sidebar entry manages SS1 and SS2 independently. Each paper holds up to 70 uploaded questions, draws exactly 30 per student and scores out of 30. The student login is `/digital`, with `?class=SS1` or `?class=SS2`. Existing SS3 students, questions, attempts and double-mark scoring remain separate. Duration defaults to 30 minutes and can be changed before the first start. Apply `npm run db:migrate:remote` before deploying this feature. See [setup and verification](docs/digital-technologies.md) for registration, CSV templates, opening exams and releasing results.
