@@ -175,17 +175,17 @@ exam.post('/start', async (c) => {
 
   if (expectedExamId !== examId) return c.json({ error: 'The live exam has changed. Refresh before starting.', attemptChanged: true }, 409);
 
-  // A bank of 50–80 per subject; each attempt is allocated 50. A trigger repeats this check atomically with the INSERT.
+  // A bank of 50–100 per subject; each attempt is allocated 50. A trigger repeats this check atomically with the INSERT.
   const empty = await c.env.DB
     .prepare(
       `SELECT s.name FROM subjects s
         WHERE (s.id = 'eng' OR s.id IN (SELECT subject_id FROM group_subjects WHERE group_no = ?))
-          AND (SELECT COUNT(*) FROM questions q WHERE q.subject_id = s.id AND q.exam_id = ?) NOT BETWEEN 50 AND 80`,
+          AND (SELECT COUNT(*) FROM questions q WHERE q.subject_id = s.id AND q.exam_id = ?) NOT BETWEEN 50 AND 100`,
     )
     .bind(group, examId)
     .all<{ name: string }>();
   if (empty.results.length) {
-    return c.json({ error: `The exam is not ready yet (each subject needs 50–80 questions: ${empty.results.map((r) => r.name).join(', ')}). Please tell your teacher.` }, 409);
+    return c.json({ error: `The exam is not ready yet (each subject needs 50–100 questions: ${empty.results.map((r) => r.name).join(', ')}). Please tell your teacher.` }, 409);
   }
 
   try {
@@ -194,7 +194,7 @@ exam.post('/start', async (c) => {
       .run();
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
-    if (message.includes('EXAM_NOT_READY')) return c.json({ error: 'The exam is not ready. Each subject needs 50–80 questions.' }, 409);
+    if (message.includes('EXAM_NOT_READY')) return c.json({ error: 'The exam is not ready. Each subject needs 50–100 questions.' }, 409);
     if (message.includes('EXAM_CHANGED')) return c.json({ error: 'The live exam has changed. Refresh before starting.', attemptChanged: true }, 409);
     if (message.includes('UNIQUE')) return c.json({ error: 'You have already started your exam.' }, 409);
     throw err;

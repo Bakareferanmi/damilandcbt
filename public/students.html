@@ -156,12 +156,18 @@ $('print-alphabetical').onclick = () => {
   try { window.print(); } catch (err) { cleanup(); window.removeEventListener('afterprint', cleanup); throw err; }
 };
 
-function showSlip(name, cls, code, password) {
+function showSlip(name, cls, code, password, qr) {
   $('slip').innerHTML = `<span class="k">Student</span><span style="font-weight:600">${esc(name)} · ${esc(cls)}</span>
     <span class="k" style="margin-top:8px">Student code</span><span class="v">${esc(code)}</span>
     <span class="k" style="margin-top:8px">Password</span><span class="v">${esc(password)}</span>
-    <span class="k" style="margin-top:8px">Log in at this website with the details above.</span>`;
+    <span class="k" style="margin-top:8px">Log in at this website with the details above.</span>
+    ${/^data:image\/gif;base64,[A-Za-z0-9+/=]+$/.test(qr ?? '') ? `<img src="${esc(qr)}" alt="Scan to sign in" width="120" height="120" style="image-rendering:pixelated">` : ''}`;
   $('slipd').showModal();
+}
+
+async function showNewSlip(name, cls, code, password) {
+  const r = await api(`/api/admin/students/${code}/password?qr=1`).catch(() => null);
+  showSlip(name, cls, code, r?.data.password ?? password, r?.data.qr);
 }
 $('slip-close').onclick = () => $('slipd').close();
 $('print').onclick = () => {
@@ -176,7 +182,7 @@ $('reg').onsubmit = async (e) => {
   const r = await api('/api/admin/students', { firstName: f.get('firstName'), lastName: f.get('lastName'), className: f.get('className') });
   $('reg-msg').hidden = !!r.ok;
   if (!r.ok) { $('reg-msg').textContent = r.data.error || 'Could not register.'; return; }
-  e.target.reset(); showSlip(r.data.fullName, r.data.className, r.data.code, r.data.password); load();
+  e.target.reset(); await showNewSlip(r.data.fullName, r.data.className, r.data.code, r.data.password); load();
 };
 async function retake(code) {
   const s = students.find((x) => x.code === code);
@@ -226,16 +232,16 @@ async function remove(code) {
 }
 async function viewPw(code) {
   const s = students.find((x) => x.code === code);
-  const r = await api(`/api/admin/students/${code}/password`);
+  const r = await api(`/api/admin/students/${code}/password?qr=1`);
   if (!r.ok) { alert(r.data.error || 'Could not show the password.'); load(); return; }
-  showSlip(s.fullName, s.className, code, r.data.password);
+  showSlip(s.fullName, s.className, code, r.data.password, r.data.qr);
 }
 async function resetPw(code) {
   const s = students.find((x) => x.code === code);
   if (!confirm(`Give ${s.fullName} a new password? The old one will stop working.`)) return;
   const r = await api(`/api/admin/students/${code}/reset-password`, {});
   if (!r.ok) return alert(r.data.error || 'Could not reset.');
-  showSlip(s.fullName, s.className, code, r.data.password);
+  await showNewSlip(s.fullName, s.className, code, r.data.password);
 }
 function openEdit(code) {
   editing = students.find((x) => x.code === code);

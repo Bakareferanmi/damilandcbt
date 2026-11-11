@@ -1,4 +1,5 @@
 import {api,escapeHTML as esc,parseQuestionsCSV,note} from './digital-common.js';
+let bankMax = 70;
 const $=id=>document.getElementById(id);
 let cohort=new URLSearchParams(location.search).get('class')==='SS2'?'SS2':'SS1',examId=null,papers=[],readOnly=false,tab='questions',questions=[],editing=null,fileRows=[],busy=false,detailsMode=false,sequence=0;
 const path=suffix=>'/api/digital/admin/'+cohort+suffix+(examId?'?examId='+examId:'');
@@ -18,12 +19,13 @@ function paintDetails(){
  $('dt-duration').disabled=busy||readOnly||!e||locked;$('dt-new').disabled=busy||readOnly;$('dt-exam').disabled=busy||!papers.length;
  $('dt-upload-fields').disabled=readOnly||locked||!e;$('dt-question-fields').disabled=readOnly||locked||!e;$('dt-register-fields').disabled=readOnly;
  $('dt-upload-button').disabled=!fileRows.length||readOnly||locked||!e||busy;
- $('dt-readonly').hidden=!readOnly;$('dt-count').textContent=(e?.questions??0)+' / 70';$('dt-meter').style.width=(e?.questions??0)/70*100+'%';
+ $('dt-readonly').hidden=!readOnly;$('dt-count').textContent=(e?.questions??0)+' / '+bankMax;$('dt-meter').style.width=(e?.questions??0)/bankMax*100+'%';
+ $('dt-print-cards').href='/login-cards?class='+cohort+(e?'&examId='+e.id:'');
  $('dt-logins-download').href=path('/logins.csv');$('dt-results-download').href=path('/results.csv');$('dt-release').textContent=e?.released?'Hide results':'Release results';$('dt-release').disabled=busy||readOnly||!e;
 }
 async function loadPapers(selected=examId){
  const seq=++sequence,space=cohort;const data=await api('/api/digital/admin/'+space+'/exams'+(selected?'?examId='+selected:''));if(seq!==sequence||space!==cohort)return false;
- papers=data.exams;examId=data.selected;readOnly=data.readOnly;
+ papers=data.exams;examId=data.selected;readOnly=data.readOnly;bankMax=data.max;
  $('dt-exam').innerHTML=papers.length?papers.map(e=>`<option value="${e.id}" ${e.id===examId?'selected':''}>${esc(e.name)}</option>`).join(''):'<option>No exams yet</option>';
  paintDetails();return true;
 }

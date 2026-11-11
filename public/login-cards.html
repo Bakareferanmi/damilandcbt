@@ -14,16 +14,19 @@ button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status
 #sheets { overflow:auto } .card-sheet { width:190mm; height:276mm; padding:0; margin:0 auto 20px; background:#fff; box-sizing:border-box; color:#111 }
 .sheet-heading { height:7mm; display:flex; align-items:center; justify-content:space-between; font-size:10pt; font-weight:bold; padding:0 2mm }
 .card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(7,37mm); gap:1.5mm }
-.login-card { border:1px dashed #555; padding:1.5mm; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; min-width:0 }
+.login-card { border:1px dashed #555; padding:1.5mm; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; min-width:0; position:relative }
 .login-card header { font-size:8pt; font-weight:bold; display:flex; align-items:center; justify-content:space-between; gap:2mm; border-bottom:1px solid #aaa; padding-bottom:.5mm }
 .school-crest { width:5mm; height:5mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
 .card-signatures { display:flex; justify-content:space-between; gap:8mm; margin-top:auto; padding-top:0 }
 .card-signatures div { width:30mm; text-align:center; display:flex; flex-direction:column; align-items:center }
-.card-signatures img { width:24mm; height:4mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
+.card-signatures img { width:20mm; height:3mm; object-fit:contain; filter:grayscale(1) contrast(1.2) }
 .card-signatures span { width:100%; border-top:1px solid #777; font-size:6pt; padding-top:0 }
 .login-card header span { font-size:7pt; font-weight:normal; text-align:right }
+.login-card:has(.card-qr) .card-signatures { padding-right:23mm; gap:1mm }
 .login-card h2 { font-size:9pt; line-height:1.05; margin:1mm 0 .5mm; overflow-wrap:anywhere }
 .login-card .class-name { font-size:7pt; margin:0 0 .5mm }
+.card-qr { position:absolute; right:1.5mm; top:7.5mm; width:22mm; height:22mm; image-rendering:pixelated }
+.login-card:has(.card-qr) h2, .login-card:has(.card-qr) .class-name, .login-card:has(.card-qr) dl { padding-right:23mm }
 .login-card dl { margin:0 } .login-card dl div { display:grid; grid-template-columns:25mm 1fr; align-items:baseline; gap:2mm; margin-bottom:0 }
 .login-card dt { font-size:8pt } .login-card dd { margin:0; font: bold 10pt monospace; overflow-wrap:anywhere }
 .login-card footer { margin-top:.5mm; font-size:6.5pt; line-height:1.2; overflow-wrap:anywhere }
@@ -43,10 +46,10 @@ button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status
 <h1>Student login cards and CSV</h1>
 <p>Choose one class section at a time. Each A4 sheet holds 14 cards: two columns and seven rows.</p>
 <p>The CSV includes names, class sections, session, student codes, saved passwords and the login website. Open it in Excel to view or print the table.</p>
-<p>Use A4 portrait, 100% scale, and turn off browser headers and footers in the print settings.</p>
+<p>Students can scan their cards on the exam login page or enter their code and password. Use A4 portrait, 100% scale, and turn off browser headers and footers in the print settings.</p>
 <div class="actions">
 <label>Class section<select id="section"><option value="">Choose a section</option><option>SS3 Art</option><option>SS3 Commercial</option><option>SS3 Science</option></select></label>
-<button id="prepare" disabled>Prepare cards</button><button id="print" disabled>Print this section</button><button id="export-csv" disabled>Download student CSV</button><button id="clear">Clear preview</button><a href="/students">Back to students</a>
+<button id="prepare" disabled>Prepare cards</button><button id="print" disabled>Print this section</button><button id="export-csv" disabled>Download student CSV</button><button id="clear">Clear preview</button><a id="back" href="/students">Back to students</a>
 </div>
 <p id="status" role="status" aria-live="polite">Choose a section to begin.</p>
 </div>
@@ -54,6 +57,14 @@ button { cursor:pointer } button:disabled { cursor:default; opacity:.6 } #status
 <script type="module">
 import { cardSheets, loadCardPasswords, studentDetailsCsv } from '/login-cards.js';
 const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const digitalClass = ['SS1', 'SS2'].includes(params.get('class')) ? params.get('class') : null;
+if (digitalClass) {
+  $('section').replaceChildren(new Option(digitalClass, digitalClass));
+  $('prepare').disabled = false;
+  $('back').href = '/digital-admin?class=' + digitalClass;
+  $('status').textContent = 'Prepare login cards for ' + digitalClass + '.';
+}
 let generation = 0, busy = false, exportData = null;
 function clear() { generation++; exportData = null; $('export-csv').disabled = true; $('sheets').replaceChildren(); $('print').disabled = true; $('status').textContent = 'Preview cleared. Choose a section and prepare cards.'; }
 $('clear').onclick = clear;
@@ -64,33 +75,42 @@ $('prepare').onclick = async () => {
   busy = true; $('prepare').disabled = true; $('section').disabled = true;
   $('status').textContent = 'Loading student details and saved passwords…';
   try {
-    const [studentsResponse, sessionResponse] = await Promise.all([fetch('/api/admin/students', {cache:'no-store'}), fetch('/api/me', {cache:'no-store'})]);
-    if (!studentsResponse.ok || !sessionResponse.ok) throw Error('Please sign in as an admin and try again.');
-    const details = await studentsResponse.json(), me = await sessionResponse.json();
-    if (me.role !== 'admin') throw Error('Only admins can prepare login cards.');
-    const selected = details.students.filter(s => s.className === section);
-    if (!selected.length) throw Error('There are no students in this section for the selected session.');
-    const result = await loadCardPasswords(selected, async code => {
-      const r = await fetch('/api/admin/students/' + encodeURIComponent(code) + '/password', {cache:'no-store'});
-      return {status:r.status,ok:r.ok,data:await r.json()};
-    });
-    if (generation !== current) return;
-    if (result.missing.length) {
-      $('status').textContent = 'Cards are not ready. Saved passwords are unavailable for: ' + result.missing.map(s=>s.fullName+' ('+s.code+')').join(', ') + '. Open Students and reset those passwords individually if appropriate, then prepare again. No passwords have been changed.';
-      return;
-    }
-    // The session name comes from the same admin session selection used by Students.
+    let result, label;
     const sessionsResponse = await fetch('/api/admin/sessions', {cache:'no-store'});
-    if (!sessionsResponse.ok) throw Error('Could not load the selected session. Please retry.');
+    if (!sessionsResponse.ok) throw Error('Please sign in as an admin and try again.');
     const sessions = await sessionsResponse.json();
     const session = sessions.sessions.find(s=>s.id === sessions.viewing)?.name;
     if (!session) throw Error('Could not identify the selected session. Please reload and try again.');
+    if (digitalClass) {
+      const examId = params.get('examId');
+      const url = '/api/digital/admin/' + digitalClass + '/login-cards' + (examId ? '?examId=' + encodeURIComponent(examId) : '');
+      const response = await fetch(url, {cache:'no-store'});
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || 'Could not load login cards.');
+      result = {cards: data.cards, missing: data.cards.filter(s => !s.password)};
+      label = data.examName;
+    } else {
+      const response = await fetch('/api/admin/students', {cache:'no-store'});
+      if (!response.ok) throw Error('Could not load students.');
+      const details = await response.json();
+      const selected = details.students.filter(s => s.className === section);
+      result = await loadCardPasswords(selected, async code => {
+        const r = await fetch('/api/admin/students/' + encodeURIComponent(code) + '/password?qr=1', {cache:'no-store'});
+        return {status:r.status,ok:r.ok,data:await r.json()};
+      });
+    }
     if (generation !== current) return;
-    $('sheets').innerHTML = cardSheets(result.cards, {section,session,website:location.origin});
+    if (result.missing.length) {
+      $('status').textContent = 'Cards are not ready. Saved passwords are unavailable for: ' + result.missing.map(s=>s.fullName+' ('+s.code+')').join(', ') + '. Open Students and reset those passwords individually, then prepare again.';
+      return;
+    }
+    if (!result.cards.length) throw Error('There are no students in this section for the selected session.');
+    const website = location.origin + (digitalClass ? '/digital?class=' + digitalClass : '');
+    $('sheets').innerHTML = cardSheets(result.cards, {section: label ? section + ' · ' + label : section,session,website});
     const images = [...$('sheets').querySelectorAll('img')];
     await Promise.all(images.map(image => image.decode()));
     if (generation !== current) return;
-    exportData = { students: result.cards, session, section, website: location.origin };
+    exportData = { students: result.cards, session, section, website };
     $('export-csv').disabled = false;
     $('print').disabled = false;
     $('status').textContent = section + ': ' + result.cards.length + ' cards on ' + Math.ceil(result.cards.length/14) + ' A4 sheet(s). Print the cards or download the student CSV. Only this section is included.';

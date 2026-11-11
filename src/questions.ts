@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
+import { questionBankCapacity } from './question-bank';
 import { liveExamOnly, requireRole, scope, type Env } from './auth';
 
 // Question bank routes. Mounted at /api/admin/questions (admins only).
-// Each subject holds at most 80 questions: the exam shows exactly 50 per subject.
+// Each subject holds at most 100 questions: the exam shows exactly 50 per subject.
 
-const MAX_PER_SUBJECT = 80;
 const MAX_IMPORT_ROWS = 500;
 const LETTERS = ['A', 'B', 'C', 'D'] as const;
 
@@ -37,7 +37,7 @@ questions.use('*', async (c, next) => {
   await next();
 });
 
-// Every subject with how many questions it has (for the "n / 80" progress bars).
+// Every subject with how many questions it has (for the "n / max" progress bars).
 questions.get('/subjects', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT s.id, s.name, COUNT(q.id) AS count
@@ -47,7 +47,7 @@ questions.get('/subjects', async (c) => {
     .bind(c.get('examId'))
     .all();
   const paper = await c.env.DB.prepare('SELECT locked_at FROM exams WHERE id = ?').bind(c.get('examId')).first<{ locked_at: string | null }>();
-  return c.json({ subjects: results, max: MAX_PER_SUBJECT, locked: !!paper?.locked_at });
+  return c.json({ subjects: results, max: await questionBankCapacity(c.env.DB, 80), locked: !!paper?.locked_at });
 });
 
 // Questions of one subject.
@@ -73,15 +73,16 @@ questions.post('/', async (c) => {
   const r = check(input);
   if (!r.ok) return c.json({ error: r.error }, 400);
 
-  // The "fewer than 80" test runs inside the INSERT itself, so two admins adding at the same moment cannot pass 80.
+  const max = await questionBankCapacity(c.env.DB, 80);
+  // Enforce capacity inside the INSERT so simultaneous uploads cannot exceed it.
   const res = await c.env.DB.prepare(
     `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
-      WHERE (SELECT COUNT(*) FROM questions WHERE subject_id = ?1 AND exam_id = ?9) < ${MAX_PER_SUBJECT}`,
+      WHERE (SELECT COUNT(*) FROM questions WHERE subject_id = ?1 AND exam_id = ?9) < ${max}`,
   )
     .bind(subject.id, r.v.body, r.v.a, r.v.b, r.v.c, r.v.d, r.v.correct, c.get('sessionId'), c.get('examId'))
     .run();
-  if (!res.meta.changes) return c.json({ error: `${subject.name} already has ${MAX_PER_SUBJECT} questions.` }, 409);
+  if (!res.meta.changes) return c.json({ error: `${subject.name} already has ${max} questions.` }, 409);
   return c.json({ ok: true, id: res.meta.last_row_id }, 201);
 });
 
@@ -109,7 +110,7 @@ questions.delete('/:id', async (c) => {
 });
 
 // Bulk upload. The page reads the CSV and sends the rows here as JSON.
-// Rows that are wrong, or that would push a subject past 80, are skipped and reported. The rest are saved together.
+// Rows that are wrong, or that would push a subject past capacity, are skipped and reported. The rest are saved together.
 questions.post('/import', async (c) => {
   const body = await c.req
     .json<{ rows?: { row?: number; subject?: string; question?: string; a?: string; b?: string; c?: string; d?: string; correct?: string }[] }>()
@@ -129,6 +130,7 @@ questions.post('/import', async (c) => {
     bySubject.set(s.name.toLowerCase(), s);
   }
 
+  const max = await questionBankCapacity(c.env.DB, 80);
   const skipped: { row: number; reason: string }[] = [];
   const statements: D1PreparedStatement[] = [];
   const addedBySubject: Record<string, number> = {};
@@ -140,7 +142,7 @@ questions.post('/import', async (c) => {
     if (!subject) return skipped.push({ row: rowNo, reason: `Unknown subject "${r.subject ?? ''}".` });
     const checked = check(r);
     if (!checked.ok) return skipped.push({ row: rowNo, reason: checked.error });
-    if (subject.count >= MAX_PER_SUBJECT) return skipped.push({ row: rowNo, reason: `${subject.name} already has ${MAX_PER_SUBJECT} questions.` });
+    if (subject.count >= max) return skipped.push({ row: rowNo, reason: `${subject.name} already has ${max} questions.` });
 
     subject.count++;
     statementSubjects.push(subject.name);
@@ -149,7 +151,7 @@ questions.post('/import', async (c) => {
       c.env.DB.prepare(
         `INSERT INTO questions (subject_id, body, option_a, option_b, option_c, option_d, correct, session_id, exam_id)
          SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
-          WHERE (SELECT COUNT(*) FROM questions WHERE subject_id = ?1 AND exam_id = ?9) < ${MAX_PER_SUBJECT}`,
+          WHERE (SELECT COUNT(*) FROM questions WHERE subject_id = ?1 AND exam_id = ?9) < ${max}`,
       ).bind(subject.id, v.body, v.a, v.b, v.c, v.d, v.correct, c.get('sessionId'), c.get('examId')),
     );
   });

@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-10-01",
 
+  "build": { "command": "npm run build:qr" },
+
   // Web pages live in /public. Requests to /api/* go to the Worker first.
   "assets": {
     "directory": "./public",
