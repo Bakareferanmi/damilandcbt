@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fixture } from './helpers.mjs';
 
-test('80-question banks allocate stable distinct sets of 50, reject unassigned answers and mark out of 50', async (t) => {
- const f = fixture({ perSubject: 80 }); t.after(f.close);
+test('100-question banks allocate stable distinct sets of 50, reject unassigned answers and mark out of 50', async (t) => {
+ const f = fixture({ perSubject: 100 }); t.after(f.close);
  const first = await f.start(1), second = await f.start(2);
  for (const s of first.subjects) {
   assert.equal(s.questions.length, 50);

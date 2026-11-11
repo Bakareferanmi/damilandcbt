@@ -58,7 +58,7 @@ wrangler.jsonc Cloudflare config
 
 ## Exam integrity and release checks
 
-Pending answers survive a refresh on the same browser when storage is available. Submission waits for acknowledgements, and delayed answer revisions cannot overwrite newer choices. Every chosen subject needs 50–80 bank questions. **The first student start locks the entire paper, name and duration permanently**; finish all intended uploads first. Copy a paper into a new exam for changes. Retakes preserve the original sitting.
+Pending answers survive a refresh on the same browser when storage is available. Submission waits for acknowledgements, and delayed answer revisions cannot overwrite newer choices. Every chosen subject needs 50–100 bank questions after migration 0016. **The first student start locks the entire paper, name and duration permanently**; finish all intended uploads first. Copy a paper into a new exam for changes. Retakes preserve the original sitting.
 
 Read [the release and 70-student rehearsal guide](docs/exam-release.md) before a live exam.
 
@@ -129,7 +129,7 @@ Domains & Routes → Add custom domain. No code changes needed.
 
 - **"Something went wrong on the server"** – check the terminal running `npm run dev`.
 - **`npm run dev` seems to hang** – it is the running server; leave it open.
-- **Group says "not ready"** – each subject of the chosen group must have 50–80 bank questions in the live exam.
+- **Group says "not ready"** – each subject of the chosen group must have 50–100 bank questions in the live exam.
 
 ### Random question banks (migration 0012)
 Teachers/admins can add up to 80 questions per subject, manually or by CSV. At least 50 are required to start. Each new attempt gets 50 random questions per subject, persisted by the database atomically at start. Refreshing or reconnecting keeps that selection. Only assigned questions can be answered and marked; each subject is scored out of 50. Question order is also shuffled per attempt. With only 50 in a bank, everyone has the same set; upload 80 for variation. Some overlap is expected and independently random sets are not guaranteed unique. Existing attempts and results retain their original paper. Retake archives include allocated question IDs.
@@ -172,4 +172,15 @@ already exhausted or resume expired attempts.
 
 ### SS1 / SS2 Digital Technologies (migration 0015)
 
-A separate **Digital Technologies** sidebar entry manages SS1 and SS2 independently. Each paper holds up to 70 uploaded questions, draws exactly 30 per student and scores out of 30. The student login is `/digital`, with `?class=SS1` or `?class=SS2`. Existing SS3 students, questions, attempts and double-mark scoring remain separate. Duration defaults to 30 minutes and can be changed before the first start. Apply `npm run db:migrate:remote` before deploying this feature. See [setup and verification](docs/digital-technologies.md) for registration, CSV templates, opening exams and releasing results.
+A separate **Digital Technologies** sidebar entry manages SS1 and SS2 independently. Each paper holds up to 100 uploaded questions after migration 0016, draws exactly 30 per student and scores out of 30. The student login is `/digital`, with `?class=SS1` or `?class=SS2`. Existing SS3 students, questions, attempts and double-mark scoring remain separate. Duration defaults to 30 minutes and can be changed before the first start. Apply `npm run db:migrate:remote` before deploying this feature. See [setup and verification](docs/digital-technologies.md) for registration, CSV templates, opening exams and releasing results.
+
+
+### QR login slips and 100-question banks
+
+For SS3, open **Students → Print login cards** and select the exam in the sidebar before preparing cards. For SS1 and SS2, select the exam in **Digital Technologies → Students → Print login cards**. Give each card directly to its student.
+
+Students can choose **Scan login slip** on the corresponding login page, allow the laptop camera and hold up their card. They can also enter the printed student code and password. Both methods open the same exam account. Starting the exam, resuming an attempt and submitting use the same controls.
+
+Each QR works for the selected exam when it becomes live or opens. Digital Technologies students already writing can still reconnect if entry closes. Reset a student's password and print a fresh card to invalidate a lost card. Treat the QR as a credential, since someone with a copy can sign in while it is valid.
+
+Apply migration `0016_question_bank_capacity.sql` with `npm run db:migrate:remote` before using the larger banks. Until the migration is applied, admins see the existing caps of 80 per SS3 subject and 70 per Digital Technologies paper. Each attempt still draws 50 per SS3 subject or 30 per Digital Technologies paper.

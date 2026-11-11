@@ -10,3 +10,5 @@ dist
 backup.sql*
 *.sql.
 .dev.vars
+
+/public/assets/qr-scanner.js

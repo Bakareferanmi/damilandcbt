@@ -5,7 +5,7 @@ import {fixture} from './helpers.mjs';
 const base='/api/digital';
 const rows=n=>Array.from({length:n},(_,i)=>({question:'Digital question '+i,a:'Correct option',b:'Second option',c:'Third option',d:'Fourth option',correct:'A'}));
 const admin=(f,cohort,path,method='GET',body)=>f.request(`${base}/admin/${cohort}${path}`,{role:'admin',method,body});
-async function setup(f,cohort='SS1',n=70){
+async function setup(f,cohort='SS1',n=100){
  const papers=await admin(f,cohort,'/exams');assert.equal(papers.status,200,JSON.stringify(papers));const examId=papers.body.selected;
  if(n){const upload=await admin(f,cohort,'/questions/import','POST',{rows:rows(n)});assert.equal(upload.status,200,JSON.stringify(upload));assert.equal(upload.body.added,n)}
  return examId;
@@ -19,15 +19,16 @@ const student=(f,s,path='',method='GET',body)=>f.request(base+'/student/exam'+pa
 async function open(f,cohort='SS1'){const r=await admin(f,cohort,'/settings','PATCH',{state:'open'});assert.equal(r.status,200,JSON.stringify(r))}
 async function start(f,s,examId){const r=await student(f,s,'/start','POST',{examId});assert.equal(r.status,201,JSON.stringify(r));return (await student(f,s)).body}
 
-test('SS1 and SS2 spaces each hold 70 questions, require 30 to open and allocate stable random papers of 30',async t=>{
- const f=fixture({perSubject:0});t.after(f.close);const id=await setup(f),s=await register(f),second=await register(f,'SS1','Bola');
+test('SS1 and SS2 spaces each hold 100 questions, require 30 to open and allocate stable random papers of 30',async t=>{
+ const f=fixture({perSubject:0});t.after(f.close);const id=await setup(f,'SS1',100),s=await register(f),second=await register(f,'SS1','Bola');
+ assert.equal((await admin(f,'SS1','/questions/import','POST',{rows:rows(1)})).body.added,0);
  await open(f);const first=await start(f,s,id),next=await start(f,second,id);
  assert.equal(first.total,30);assert.equal(first.questions.length,30);assert.equal(new Set(first.questions.map(q=>q.id)).size,30);
  assert.notDeepEqual(first.questions.map(q=>q.id).sort((a,b)=>a-b),next.questions.map(q=>q.id).sort((a,b)=>a-b));
  assert.deepEqual((await student(f,s)).body.questions,first.questions);assert.ok(first.questions.every(q=>!Object.hasOwn(q,'correct')));
  assert.equal((await student(f,s,'/start','POST',{examId:id})).status,200);assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM digital_attempts WHERE student_id=?').get(s.id).n,1);
  const ss2=await setup(f,'SS2',29);assert.equal((await admin(f,'SS2','/settings','PATCH',{state:'open'})).status,409);
- assert.equal((await admin(f,'SS2','/questions/import','POST',{rows:rows(1)})).body.added,1);await open(f,'SS2');const s2=await register(f,'SS2');assert.equal((await start(f,s2,ss2)).questions.length,30);
+ assert.equal((await admin(f,'SS2','/questions/import','POST',{rows:rows(1)})).body.added,1);assert.equal((await admin(f,'SS2','/questions/import','POST',{rows:rows(71)})).body.added,70);await open(f,'SS2');const s2=await register(f,'SS2');assert.equal((await start(f,s2,ss2)).questions.length,30);
 });
 test('class, student and admin authentication boundaries prevent cross-class access and answer injection',async t=>{
  const f=fixture({perSubject:0});t.after(f.close);const id=await setup(f),id2=await setup(f,'SS2');await open(f);await open(f,'SS2');const s=await register(f),s2=await register(f,'SS2');

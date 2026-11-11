@@ -1,5 +1,5 @@
 import { asMarks } from './scoring';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { deleteCookie } from 'hono/cookie';
 import { COOKIE, currentSessionId, liveExamOnly, readSession, requireRole, scope, startSession, type Env } from './auth';
 import { decryptSecret, encryptSecret, hashPassword, randomPassword, verifyPassword } from './crypto';
@@ -10,6 +10,7 @@ import questions from './questions';
 import results from './results';
 import settings from './settings';
 import digital from './digital';
+import { invalidLoginQr, loginQrImage, readLoginQr } from './login-qr';
 
 const CLASSES = ['SS3 Art', 'SS3 Commercial', 'SS3 Science'] as const;
 
@@ -93,6 +94,13 @@ app.post('/api/admin/login', async (c) => {
   return c.json({ ok: true, role: 'admin', email: admin.email });
 });
 
+type StudentLogin = { id: number; code: string; full_name: string; class_name: string; auth_version: number };
+
+async function signInStudent(c: Context<Env>, student: StudentLogin) {
+  await startSession(c, 'student', student.id, student.auth_version);
+  return c.json({ ok: true, role: 'student', name: student.full_name, code: student.code, className: student.class_name });
+}
+
 app.post('/api/student/login', async (c) => {
   const { code, password } = await c.req.json<{ code?: string; password?: string }>().catch(() => ({}) as any);
   if (!code || !password) return c.json({ error: 'Enter your student code and password.' }, 400);
@@ -105,15 +113,33 @@ app.post('/api/student/login', async (c) => {
     'SELECT id, code, full_name, class_name, password_hash, auth_version FROM students WHERE code = ? AND session_id = ?',
   )
     .bind(code.trim().toUpperCase(), await currentSessionId(c.env.DB))
-    .first<{ id: number; code: string; full_name: string; class_name: string; password_hash: string; auth_version: number }>();
+    .first<StudentLogin & { password_hash: string }>();
 
   if (!student || !(await verifyPassword(password.trim().toUpperCase(), student.password_hash))) {
     if (student) await recordFail(c.env.DB, key); // codes that do not exist write nothing
     return c.json({ error: 'Student code or password is not correct.' }, 401);
   }
   await clearFails(c.env.DB, key);
-  await startSession(c, 'student', student.id, student.auth_version);
-  return c.json({ ok: true, role: 'student', name: student.full_name, code: student.code, className: student.class_name });
+  return signInStudent(c, student);
+});
+
+app.post('/api/student/qr-login', async (c) => {
+  const origin = c.req.header('Origin');
+  if ((origin && origin !== new URL(c.req.url).origin) || c.req.header('Sec-Fetch-Site') === 'cross-site') {
+    return c.json({ error: 'Request origin could not be verified.' }, 403);
+  }
+  const body = await c.req.json<{ token?: unknown } | null>().catch(() => null);
+  const qr = await readLoginQr(c.env.JWT_SECRET, 'ss3', body?.token);
+  if (!qr) return c.json({ error: invalidLoginQr }, 401);
+
+  const student = await c.env.DB.prepare(`
+    SELECT s.id, s.code, s.full_name, s.class_name, s.auth_version
+    FROM students s JOIN exams e ON e.session_id = s.session_id
+    WHERE s.id = ? AND s.auth_version = ? AND e.id = ?
+      AND s.session_id = (SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'current_session_id')
+      AND e.id = (SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'current_exam_id')
+  `).bind(qr.studentId, qr.version, qr.examId).first<StudentLogin>();
+  return student ? signInStudent(c, student) : c.json({ error: invalidLoginQr }, 401);
 });
 
 app.post('/api/logout', (c) => {
@@ -166,14 +192,17 @@ app.put('/api/admin/students/:code', requireRole('admin'), scope, async (c) => {
 // Only students whose password was created or reset after this feature was added have one saved.
 app.get('/api/admin/students/:code/password', requireRole('admin'), scope, async (c) => {
   c.header('Cache-Control', 'no-store');
-  const row = await c.env.DB.prepare('SELECT password_enc FROM students WHERE code = ? AND session_id = ?')
+  const row = await c.env.DB.prepare('SELECT id, password_enc, auth_version FROM students WHERE code = ? AND session_id = ?')
     .bind((c.req.param('code') ?? '').toUpperCase(), c.get('sessionId'))
-    .first<{ password_enc: string | null }>();
+    .first<{ id: number; password_enc: string | null; auth_version: number }>();
   if (!row) return c.json({ error: 'Student not found.' }, 404);
   const password = await decryptSecret(row.password_enc, pwKey(c.env));
   if (!password) return c.json({ error: 'This password was not saved, so it cannot be shown. Use “Reset password” to give the student a new one.' }, 404);
   await c.env.DB.prepare('INSERT INTO audit_events (actor_id, action, target) VALUES (?, ?, ?)').bind(c.get('session').id, 'view_student_password', c.req.param('code')).run();
-  return c.json({ ok: true, password });
+  const qr = c.req.query('qr') === '1' && c.get('sessionId') === c.get('currentSessionId')
+    ? await loginQrImage(c.env.JWT_SECRET, 'ss3', row.id, c.get('examId'), row.auth_version)
+    : undefined;
+  return c.json({ ok: true, password, qr });
 });
 
 // Gives a student a new password (the old one stops working). Also saved (encrypted) so an admin can view it again.

@@ -1,5 +1,6 @@
 import {api,note} from './digital-common.js';
 import {AnswerQueue} from './answer-queue.js';
+import {mountQrLogin} from './qr-login.js';
 import {FocusTracker} from './focus-tracker.js';
 const $=id=>document.getElementById(id),base='/api/digital/student';
 let state=null,queue=null,focus=null,index=0,tick=null,deadline=0,submitting=false,expired=false,retryAt=0,loading=false;
@@ -68,6 +69,11 @@ const loginForm=$('dt-login-form'),chosenClass=new URLSearchParams(location.sear
 loginForm.elements.cohort.onchange=()=>{loginForm.elements.code.placeholder=loginForm.elements.cohort.value+'-DT-001'};loginForm.elements.cohort.onchange();
 $('dt-show-password').onclick=()=>{const input=loginForm.elements.password,show=input.type==='password';input.type=show?'text':'password';$('dt-show-password').textContent=show?'Hide':'Show';$('dt-show-password').setAttribute('aria-label',show?'Hide password':'Show password')};
 loginForm.onsubmit=async event=>{event.preventDefault();const button=event.submitter;button.disabled=true;error('');try{await api(base+'/login',{method:'POST',body:Object.fromEntries(new FormData(loginForm))});loginForm.elements.password.value='';await load()}catch(e){error(e.message)}finally{button.disabled=false}};
+mountQrLogin(loginForm, async token => {
+ await api(base+'/qr-login',{method:'POST',body:{token}});
+ loginForm.elements.password.value='';
+ await load();
+});
 $('dt-start').onclick=async()=>{const button=$('dt-start');button.disabled=true;error('');try{await api(base+'/exam/start',{method:'POST',body:{examId:state.examId}});await load()}catch(e){error(e.message)}finally{button.disabled=false}};
 $('dt-answer-options').onchange=event=>{if(!active())return;queue.choose(state.questions[index].id,event.target.value);updateSave(queue);flush()};
 $('dt-previous').onclick=()=>{if(index>0){index--;question(true)}};$('dt-next').onclick=()=>{if(index<state.questions.length-1){index++;question(true)}};

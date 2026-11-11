@@ -4,6 +4,8 @@ import { sign, verify } from 'hono/jwt';
 import { bodyLimit } from 'hono/body-limit';
 import { currentSessionId, requireRole, VIEW_COOKIE, type Env } from './auth';
 import { hashPassword, verifyPassword, randomPassword, encryptSecret, decryptSecret } from './crypto';
+import { invalidLoginQr, loginQrImage, readLoginQr } from './login-qr';
+import { questionBankCapacity } from './question-bank';
 import { lockedMinutes, lockMessage, recordFail, clearFails } from './limits';
 
 type Paper = { id: number; session_id: number; cohort: string; name: string; minutes: number; state: string; locked_at: number | null; results_released: number };
@@ -11,7 +13,7 @@ type Learner = { id: number; session_id: number; cohort: string; code: string; f
 type Sitting = { id: number; exam_id: number; started_at: number; ends_at: number; submitted_at: number | null; score: number | null; answered: number; focus_count: number };
 type DigitalEnv = { Bindings: Env['Bindings']; Variables: Env['Variables'] & { digitalPaper: Paper | null; digitalStudent: Learner; digitalCohort: string } };
 type Ctx = Context<DigitalEnv>;
-const COOKIE = 'digital_session', COOKIE_PATH = '/api/digital', TOTAL = 30, MAX = 70, GRACE = 10;
+const COOKIE = 'digital_session', COOKIE_PATH = '/api/digital', TOTAL = 30, GRACE = 10;
 const now = () => Math.floor(Date.now() / 1000);
 const text = (x: unknown) => typeof x === 'string' ? x.trim().replace(/\s+/g, ' ') : '';
 const positive = (x: unknown) => (typeof x === 'number' || (typeof x === 'string' && /^\d+$/.test(x))) && Number.isSafeInteger(Number(x)) && Number(x) > 0;
@@ -43,7 +45,7 @@ async function sitting(db: D1Database, studentId: number, examId: number) {
  return db.prepare('SELECT id,exam_id,started_at,ends_at,submitted_at,score,answered,focus_count FROM digital_attempts WHERE student_id=? AND exam_id=?').bind(studentId,examId).first<Sitting>();
 }
 const dt = new Hono<DigitalEnv>();
-dt.use('*', bodyLimit({ maxSize: 1024*1024, onError: c => c.json({ error: 'This upload is too large. Upload at most 70 questions at once.' },413) }));
+dt.use('*', bodyLimit({ maxSize: 1024*1024, onError: c => c.json({ error: 'This upload is too large. Upload fewer questions at once.' },413) }));
 dt.use('*', async (c,next) => {
  if (!['GET','HEAD'].includes(c.req.method)) {
   const origin = c.req.header('Origin');
@@ -54,7 +56,7 @@ dt.use('*', async (c,next) => {
 dt.onError((err,c) => {
  const errors: Record<string,string> = {
   DIGITAL_NO_PAPER:'Create an exam for this class first.', DIGITAL_BANK_NOT_READY:'Add at least 30 questions before opening the exam.',
-  DIGITAL_BANK_FULL:'This paper already has 70 questions.', DIGITAL_PAPER_LOCKED:'A student has started this paper. Create a new exam to change its questions or duration.',
+  DIGITAL_BANK_FULL:'This question bank is full.', DIGITAL_PAPER_LOCKED:'A student has started this paper. Create a new exam to change its questions or duration.',
   DIGITAL_SPACE_BUSY:'Close the other open paper and let its students finish before opening this one.', DIGITAL_EXAM_CHANGED:'This exam is not open for your class. Refresh and contact your teacher.',
   DIGITAL_FINISHED:'Your exam has finished. Refresh to see the saved submission.'
  };
@@ -86,7 +88,7 @@ dt.get('/admin/:cohort/exams', async c => {
  (SELECT COUNT(*) FROM digital_attempts a WHERE a.exam_id=e.id) AS attempts
  FROM digital_exams e WHERE e.session_id=? AND e.cohort=? ORDER BY e.id DESC`).bind(c.get('sessionId'),c.get('digitalCohort')).all();
  const count = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM digital_students WHERE session_id=? AND cohort=?').bind(c.get('sessionId'),c.get('digitalCohort')).first<{n:number}>();
- return c.json({ exams:results, selected:c.get('digitalPaper')?.id??null, cohort:c.get('digitalCohort'), students:count?.n??0, total:TOTAL, max:MAX, readOnly:c.get('sessionId')!==c.get('currentSessionId') });
+ return c.json({ exams:results, selected:c.get('digitalPaper')?.id??null, cohort:c.get('digitalCohort'), students:count?.n??0, total:TOTAL, max:await questionBankCapacity(c.env.DB,70), readOnly:c.get('sessionId')!==c.get('currentSessionId') });
 });
 dt.post('/admin/:cohort/exams', async c => {
  const b=await body(c), name=text(b.name), minutes=Number(b.minutes??30), copyFrom=Number(b.copyFrom||0);
@@ -114,12 +116,13 @@ dt.patch('/admin/:cohort/settings', async c => {
 });
 dt.get('/admin/:cohort/questions', async c => {
  const e=paper(c); const {results}=await c.env.DB.prepare('SELECT id,body,option_a AS a,option_b AS b,option_c AS c,option_d AS d,correct FROM digital_questions WHERE exam_id=? ORDER BY id').bind(e.id).all();
- return c.json({questions:results,max:MAX,total:TOTAL,locked:!!e.locked_at});
+ return c.json({questions:results,max:await questionBankCapacity(c.env.DB,70),total:TOTAL,locked:!!e.locked_at});
 });
 dt.post('/admin/:cohort/questions/import', async c => {
  const e=paper(c); if(e.locked_at)throw new Error('DIGITAL_PAPER_LOCKED'); const b=await body(c);
- if(!Array.isArray(b.rows)||!b.rows.length||b.rows.length>200) return c.json({error:'Upload between 1 and 200 rows. A paper can hold up to 70 questions.'},400);
+ if(!Array.isArray(b.rows)||!b.rows.length||b.rows.length>200) return c.json({error:'Upload between 1 and 200 rows.'},400);
  const n=await c.env.DB.prepare('SELECT COUNT(*) AS n FROM digital_questions WHERE exam_id=?').bind(e.id).first<{n:number}>();
+ const max=await questionBankCapacity(c.env.DB,70);
  let count=n?.n??0; const skipped:{row:number;reason:string}[]=[],statements:D1PreparedStatement[]=[];
  b.rows.forEach((raw,i)=>{
   const r=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:{}; const checked=cleanQuestion(r),row=Number.isSafeInteger(r.row)?Number(r.row):i+2;
@@ -127,10 +130,10 @@ dt.post('/admin/:cohort/questions/import', async c => {
   if(rowClass&&rowClass!==e.cohort){skipped.push({row,reason:'This row is for '+rowClass+', not '+e.cohort+'.'});return}
   if(subject&&!['digital technologies','digital technology','digital','dt'].includes(subject)){skipped.push({row,reason:'This space accepts Digital Technologies questions only.'});return}
   if('error' in checked){skipped.push({row,reason:checked.error!});return}
-  if(count>=MAX){skipped.push({row,reason:'The 70-question bank is full.'});return}
+  if(count>=max){skipped.push({row,reason:`The ${max}-question bank is full.`});return}
   count++;const q=checked.value;
   statements.push(c.env.DB.prepare(`INSERT INTO digital_questions(exam_id,body,option_a,option_b,option_c,option_d,correct)
-   SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE (SELECT COUNT(*) FROM digital_questions WHERE exam_id=?1)<70`).bind(e.id,q.body,q.a,q.b,q.c,q.d,q.correct));
+   SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE (SELECT COUNT(*) FROM digital_questions WHERE exam_id=?1)<${max}`).bind(e.id,q.body,q.a,q.b,q.c,q.d,q.correct));
  });
  const saved=statements.length?await c.env.DB.batch(statements):[]; const added=saved.reduce((n,r)=>n+r.meta.changes,0);
  return c.json({ok:true,added,skipped,warning:added<statements.length?'Another upload filled the bank. Refresh to check its questions.':null});
@@ -164,6 +167,20 @@ dt.get('/admin/:cohort/logins.csv', async c=>{
  const rows=await Promise.all(results.map(async s=>[s.full_name,c.get('digitalCohort'),s.code,(await decryptSecret(s.password_enc,secret(c)))??'Contact admin to reset',new URL('/digital',c.req.url).href+'?class='+c.get('digitalCohort')]));
  return download(c,c.get('digitalCohort')+'-digital-logins.csv',[['Name','Class','Student code','Password','Login URL'],...rows]);
 });
+dt.get('/admin/:cohort/login-cards', async c => {
+ const e=paper(c), className=c.get('digitalCohort');
+ const {results}=await c.env.DB.prepare(`SELECT id,code,full_name,password_enc,auth_version FROM digital_students
+  WHERE session_id=? AND cohort=? ORDER BY full_name COLLATE NOCASE,id LIMIT 500`).bind(e.session_id,className)
+  .all<{id:number;code:string;full_name:string;password_enc:string;auth_version:number}>();
+ const cards=await Promise.all(results.map(async s => ({
+  fullName:s.full_name, className, code:s.code,
+  password:await decryptSecret(s.password_enc,secret(c)),
+  qr:e.session_id===c.get('currentSessionId') ? await loginQrImage(c.env.JWT_SECRET,'digital',s.id,e.id,s.auth_version) : undefined
+ })));
+ await c.env.DB.prepare('INSERT INTO audit_events (actor_id, action, target) VALUES (?, ?, ?)')
+  .bind(c.get('session').id,'view_digital_login_cards',className+':'+e.id).run();
+ return c.json({cards,examName:e.name});
+});
 dt.post('/admin/:cohort/students/:id/reset-password', async c=>{
  const password=randomPassword(),hash=await hashPassword(password),enc=await encryptSecret(password,secret(c));
  const r=await c.env.DB.prepare('UPDATE digital_students SET password_hash=?,password_enc=?,auth_version=auth_version+1 WHERE id=? AND session_id=? AND cohort=?').bind(hash,enc,Number(c.req.param('id')),c.get('sessionId'),c.get('digitalCohort')).run();
@@ -190,9 +207,26 @@ dt.post('/student/login', async c=>{
  const s=await c.env.DB.prepare('SELECT id,auth_version,password_hash FROM digital_students WHERE session_id=? AND cohort=? AND code=?').bind(sid,cohort,code).first<{id:number;auth_version:number;password_hash:string}>();
  if(!s||!(await verifyPassword(password,s.password_hash))){if(s)await recordFail(c.env.DB,key);return c.json({error:'Student code or password is not correct for this class.'},401)}
  await clearFails(c.env.DB,key);
- const jwt=await sign({role:'digital-student',id:s.id,v:s.auth_version,exp:now()+8*3600},c.env.JWT_SECRET);
+ return signInDigital(c,s,cohort);
+});
+
+async function signInDigital(c: Ctx, student: {id:number;auth_version:number}, cohort: string) {
+ const jwt=await sign({role:'digital-student',id:student.id,v:student.auth_version,exp:now()+8*3600},c.env.JWT_SECRET);
  setCookie(c,COOKIE,jwt,{path:COOKIE_PATH,sameSite:'Lax',httpOnly:true,secure:new URL(c.req.url).protocol==='https:',maxAge:8*3600});
  return c.json({ok:true,cohort});
+}
+
+dt.post('/student/qr-login', async c => {
+ const qr=await readLoginQr(c.env.JWT_SECRET,'digital',(await body(c)).token);
+ if(!qr)return c.json({error:invalidLoginQr},401);
+ const student=await c.env.DB.prepare(`SELECT s.id,s.auth_version,s.cohort
+  FROM digital_students s JOIN digital_exams e ON e.session_id=s.session_id AND e.cohort=s.cohort
+  WHERE s.id=? AND s.auth_version=? AND e.id=?
+   AND s.session_id=(SELECT CAST(value AS INTEGER) FROM settings WHERE key='current_session_id')
+   AND (e.state='open' OR EXISTS(
+    SELECT 1 FROM digital_attempts a WHERE a.student_id=s.id AND a.exam_id=e.id AND a.submitted_at IS NULL AND a.ends_at>=unixepoch()-10
+   ))`).bind(qr.studentId,qr.version,qr.examId).first<{id:number;auth_version:number;cohort:string}>();
+ return student ? signInDigital(c,student,student.cohort) : c.json({error:invalidLoginQr},401);
 });
 dt.post('/student/logout', c=>{deleteCookie(c,COOKIE,{path:COOKIE_PATH});return c.json({ok:true})});
 dt.use('/student/*',async(c,next)=>{

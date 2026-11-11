@@ -5,6 +5,7 @@ export function cardSheets(students, { section, session, website }) {
     const cards = students.slice(i, i + 14).map(s => `<article class="login-card">
       <header><img class="school-crest" src="/school-crest.png" alt="School crest"><b>DAMILAND CBT</b><span>Student login card</span></header>
       <h2>${esc(s.fullName)}</h2><p class="class-name">${esc(s.className)} · ${esc(session)}</p>
+      ${/^data:image\/gif;base64,[A-Za-z0-9+/=]+$/.test(s.qr ?? '') ? `<img class="card-qr" src="${esc(s.qr)}" alt="Scan to sign in">` : ''}
       <dl><div><dt>Student code</dt><dd>${esc(s.code)}</dd></div><div><dt>Password</dt><dd>${esc(s.password)}</dd></div></dl>
       <div class="card-signatures"><div><img src="/signatures/gm.png" alt="G.M signature"><span>G.M</span></div><div><img src="/signatures/principal.png" alt="Principal signature"><span>Principal</span></div></div>
       <footer>${esc(website)}</footer>
@@ -25,7 +26,7 @@ export async function loadCardPasswords(students, getPassword) {
       const result = await getPassword(student.code);
       if (result.status === 404) { missing.push(student); continue; }
       if (!result.ok || !result.data.password) throw new Error(result.data.error || 'Could not load login details. Please retry.');
-      cards[i] = { ...student, password: result.data.password };
+      cards[i] = { ...student, password: result.data.password, qr: result.data.qr };
     }
   }));
   return { cards: cards.filter(Boolean), missing };
